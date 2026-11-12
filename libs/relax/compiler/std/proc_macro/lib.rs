@@ -304,6 +304,24 @@ fn push_i128(s: &mut String, n: i128) {
 
 /// `{:?}` of a char inside a string literal (rustc's Literal::string escaping): `\0 \t \r \n
 /// \\ \"`, other control chars as `\u{..}`.
+/// One byte of a C string literal: the escapes a byte string takes, with `"` escaped.
+fn push_escaped_byte(s: &mut String, byte: u8) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    match byte {
+        b'\t' => s.push_str("\\t"),
+        b'\r' => s.push_str("\\r"),
+        b'\n' => s.push_str("\\n"),
+        b'\\' => s.push_str("\\\\"),
+        b'"' => s.push_str("\\\""),
+        0x20..=0x7e => s.push(byte as char),
+        _ => {
+            s.push_str("\\x");
+            s.push(HEX[(byte >> 4) as usize] as char);
+            s.push(HEX[(byte & 15) as usize] as char);
+        }
+    }
+}
+
 fn push_escaped(s: &mut String, c: char, quote: char) {
     match c {
         '\0' => s.push_str("\\0"),
@@ -403,6 +421,14 @@ impl Literal {
         let mut s = String::from("\"");
         for c in string.chars() {
             push_escaped(&mut s, c, '"');
+        }
+        s.push('"');
+        Literal::from_text(s)
+    }
+    pub fn c_string(string: &std::ffi::CStr) -> Literal {
+        let mut s = String::from("c\"");
+        for &byte in string.to_bytes() {
+            push_escaped_byte(&mut s, byte);
         }
         s.push('"');
         Literal::from_text(s)

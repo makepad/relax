@@ -1,0 +1,7 @@
+[package]
+name = "pm-c-string-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pm-c-string-mac = { path = "../mac" }
