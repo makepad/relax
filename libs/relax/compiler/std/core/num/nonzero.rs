@@ -115,6 +115,19 @@ impl<T: ZeroablePrimitive> fmt::Display for NonZero<T> {
         fmt::Display::fmt(&self.0, f)
     }
 }
+
+impl<T: ZeroablePrimitive + fmt::Binary> fmt::Binary for NonZero<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { fmt::Binary::fmt(&self.0, f) }
+}
+impl<T: ZeroablePrimitive + fmt::Octal> fmt::Octal for NonZero<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { fmt::Octal::fmt(&self.0, f) }
+}
+impl<T: ZeroablePrimitive + fmt::LowerHex> fmt::LowerHex for NonZero<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { fmt::LowerHex::fmt(&self.0, f) }
+}
+impl<T: ZeroablePrimitive + fmt::UpperHex> fmt::UpperHex for NonZero<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { fmt::UpperHex::fmt(&self.0, f) }
+}
 impl<T: ZeroablePrimitive> FromStr for NonZero<T> {
     type Err = ParseIntError;
     fn from_str(src: &str) -> Result<NonZero<T>, ParseIntError> {
