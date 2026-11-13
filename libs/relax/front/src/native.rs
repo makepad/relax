@@ -16,8 +16,12 @@
 //! compiles their executable; scripts feeding native host dependencies query the native rustc.
 //! Cargo's `build-script-executed` messages give the cfgs, rustc-env and
 //! OUT_DIR the Relax compile of those crates uses and the static archives and system libraries
-//! the scripts link; the archives are linked into ONE shared library with the system linker,
-//! which the run loads by path before the program starts.
+//! the scripts link. The archives are linked into ONE shared library with the system linker when
+//! the run loads it (`NativeLib::link_for`), once the program is known: as rustc's link of the
+//! binary, only what the program's foreign items name is taken from them, with what that needs.
+//! Two archives that both carry a library (onnxruntime's and libwebrtc's protobuf), or an
+//! archive holding an object twice, link as they do under rustc. A library per set of imports
+//! is kept under the build's key.
 //!
 //! The cargo step and the link are cached under `<relax dir>/native/<key>/`: the key covers the
 //! cargo flags, the resolved packages of the native closure (versions, features, sources; each
@@ -62,7 +66,8 @@
 //! target) and the optimized archives replace the library for the starts after it. The scripts'
 //! outputs (cfgs, env, OUT_DIR) stay the first build's, so the Relax compile of these crates and
 //! its cache do not change with the tier; an optimized build whose scripts say anything else
-//! than the first one's is not taken. `<key>/fast` marks a library of the first tier.
+//! than the first one's is not taken. `<key>/fast` marks a build of the first tier only; the
+//! optimized build's cargo messages (`<key>/messages-opt.jsonl`) give the archives later links take.
 
 use crate::unitgraph::{BuildScript, Graph};
 use std::process::{Command, Stdio};
@@ -74,7 +79,6 @@ pub struct Request<'a> {
     pub cargo_flags: &'a [String],
     pub relax_dir: &'a str,
     pub triple: &'a str,
-    pub resolvable: Resolvable,
     /// `--quiet` / `--silent` (a program's re-run, an integration test's CARGO_BIN_EXE child):
     /// no status line; the stderr is the program's
     pub quiet: bool,
@@ -124,10 +128,12 @@ pub struct ScriptOut {
     pub system: Vec<(String, bool)>,
 }
 
-/// The shared library the native archives were linked into.
+/// The native archives and what they link, linked into one shared library at load time for the
+/// program's own imports (`link_for`).
 #[derive(Clone)]
 pub struct NativeLib {
-    pub path: String,
+    /// the build's directory under its key: the libraries linked from it live there
+    pub dir: String,
     /// the names of the static libraries inside it (`#[link(name = .., kind = "static")]`)
     pub statics: Vec<String>,
     /// the native packages ("name version")
@@ -136,6 +142,77 @@ pub struct NativeLib {
     /// linked for more packages): C of the others may call a `#[no_mangle]` fn it lacks, which
     /// stays unbound (native_stub.rs, relax issue 174)
     pub partial: bool,
+    /// the link's inputs: the scripts' archives, their search folders, the system libraries and
+    /// frameworks they link, the program's own link arguments (`Outputs`), the target
+    pub archives: Vec<String>,
+    pub search: Vec<String>,
+    pub fw_search: Vec<String>,
+    pub dylibs: Vec<String>,
+    pub frameworks: Vec<String>,
+    pub link_args: Vec<String>,
+    pub triple: String,
+}
+
+impl NativeLib {
+    /// The shared library of these archives for a program whose foreign items have the symbol
+    /// names `imports` (C names): the imports the archives define are its roots, so programs
+    /// whose roots are alike share one library. Linked on the first load of those roots, kept
+    /// under the build's key afterwards; the archives as they are (`archive_stamp`) name it, so a
+    /// refreshed build under the same key links a library of its own. Its path.
+    pub fn link_for(&self, imports: &[String], resolvable: Resolvable) -> Result<String, String> {
+        let imports: std::collections::HashSet<&str> = imports.iter().map(String::as_str).collect();
+        let mut roots = self.archive_symbols()?;
+        roots.retain(|name, _| c_name(name).is_some_and(|c| imports.contains(c)));
+        let mut h = fnv(b"native-roots-v2", 0xcbf29ce484222325);
+        for a in &self.archives {
+            h = fnv(a.as_bytes(), h);
+            h = fnv(archive_stamp(a).as_bytes(), h);
+        }
+        for part in roots.keys() {
+            h = fnv(part.as_bytes(), h);
+            h = fnv(b"\0", h);
+        }
+        let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
+        let path = format!("{}/libnative-{:016x}.{}", self.dir, h, ext);
+        if !std::path::Path::new(&path).is_file() {
+            link(&path, self, &roots, resolvable)?;
+        }
+        Ok(path)
+    }
+
+    /// The defined global symbols of the archives (`archive_symbols`), kept beside the build as
+    /// `archive-symbols-<archives>.tsv` (an archive's path, size and modification time), so a
+    /// load reads none of them again.
+    fn archive_symbols(&self) -> Result<std::collections::BTreeMap<String, bool>, String> {
+        let mut h = fnv(b"archive-symbols-v1", 0xcbf29ce484222325);
+        for a in &self.archives {
+            h = fnv(a.as_bytes(), h);
+            h = fnv(archive_stamp(a).as_bytes(), h);
+        }
+        let path = format!("{}/archive-symbols-{:016x}.tsv", self.dir, h);
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            return Ok(text.lines().filter_map(|l| l.split_once('\t')).map(|(name, tls)| (name.to_string(), tls == "1")).collect());
+        }
+        let symbols = archive_symbols(&self.archives)?;
+        let text: String = symbols.iter().map(|(name, tls)| format!("{name}\t{}\n", *tls as u8)).collect();
+        let tmp = format!("{}.tmp{}", path, std::process::id());
+        if std::fs::create_dir_all(&self.dir).is_ok() && std::fs::write(&tmp, text).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
+        Ok(symbols)
+    }
+}
+
+/// An archive as a build left it: its size and modification time (`None` when it is gone).
+fn archive_stamp(archive: &str) -> String {
+    let stamp = std::fs::metadata(archive).ok().and_then(|m| Some((m.len(), m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos())));
+    format!("{stamp:?}")
+}
+
+/// A symbol's C name as the object files spell it: Mach-O's with its leading `_` off (None for a
+/// name with no C spelling), ELF's as it is.
+fn c_name(object_name: &str) -> Option<&str> {
+    if cfg!(target_vendor = "apple") { object_name.strip_prefix('_') } else { Some(object_name) }
 }
 
 pub struct Built {
@@ -343,7 +420,8 @@ struct Plan {
     selection: u64,
     dir: String,
     messages_path: String,
-    lib_path: String,
+    /// the optimized build's cargo messages, once it finished (`optimize_later`)
+    opt_messages_path: String,
     fast_mark: String,
 }
 
@@ -441,62 +519,85 @@ fn plan(g: &Graph, seeds: &[usize], req: &Request) -> Plan {
     names.dedup();
     let dir = format!("{}/native/{:016x}", req.relax_dir, h);
     let messages_path = format!("{}/messages.jsonl", dir);
-    let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
-    let lib_path = format!("{}/libnative.{}", dir, ext);
+    let opt_messages_path = format!("{}/messages-opt.jsonl", dir);
     let fast_mark = format!("{}/fast", dir);
-    Plan { script_pkgs, lib_pkgs, flags, names, key: h, selection, dir, messages_path, lib_path, fast_mark }
+    Plan { script_pkgs, lib_pkgs, flags, names, key: h, selection, dir, messages_path, opt_messages_path, fast_mark }
 }
 
 /// Builds the native packages `seeds` (indices into `g.build_scripts`) with cargo, or finds the
-/// cached build, and links them. The error names what failed.
+/// cached build. The archives are linked when the run loads them (`NativeLib::link_for`). The
+/// error names what failed.
 pub fn build(g: &Graph, seeds: &[usize], req: &Request) -> Result<Built, String> {
     let exe = crate::dirs::loader_exe().map_err(|e| format!("this executable: {e}"))?;
     let plan = plan(g, seeds, req);
     // named before anything is read or built under it: a prune from now on keeps it
     write_root(req, &plan)?;
     let flags: Vec<&String> = plan.flags.iter().collect();
-    let out = match std::fs::read_to_string(&plan.messages_path).ok().and_then(|m| cached(&g.pkg, &script_table(g), seeds, &m, &plan.lib_path)) {
+    let out = match std::fs::read_to_string(&plan.messages_path).ok().and_then(|m| cached(&g.pkg, &script_table(g), seeds, &m)) {
         Some(out) => out,
         None => {
             let m = run_cargo(g, req, &exe, &flags, &plan.script_pkgs, &plan.lib_pkgs, seeds, Tier::Fast)?;
             let out = outputs(g, seeds, &m)?;
             std::fs::create_dir_all(&plan.dir).map_err(|e| format!("{}: {}", plan.dir, e))?;
-            // an earlier build's library and receipt under this key stay until this build's library
-            // has linked (link writes it beside, then renames it over the old one): an executable
-            // prepared with them still runs when this link fails, and no receipt is ever newer than
-            // the library beside it (relax issue 160: the library went before a link that failed)
-            if !(out.archives.is_empty() && out.dylibs.is_empty() && out.frameworks.is_empty()) {
-                link(&plan.lib_path, &out, req.triple, req.resolvable)?;
-            }
+            // the archives link when a run loads them (NativeLib::link_for), into a library named by
+            // the archives as this build left them: no library an earlier build under this key
+            // linked is taken for this one's archives (review B-M5: a library built against the
+            // old inputs stayed linked), and none is removed here (relax issue 160)
             std::fs::write(&plan.fast_mark, b"").map_err(|e| format!("{}: {}", plan.fast_mark, e))?;
             write_beside(&plan.messages_path, m.as_bytes())?;
+            // an optimized build of an earlier cargo run under this key is not this one's
+            let _ = std::fs::remove_file(&plan.opt_messages_path);
             out
         }
     };
     if out.archives.is_empty() && out.dylibs.is_empty() && out.frameworks.is_empty() {
         return Ok(Built { scripts: out.scripts, lib: None });
     }
+    let lib = native_lib(g, seeds, &plan, &out, req.triple);
     if std::path::Path::new(&plan.fast_mark).is_file() {
-        optimize_later(g, req, exe, &flags, plan.script_pkgs, plan.lib_pkgs, seeds, &out, plan.lib_path.clone(), plan.fast_mark);
+        optimize_later(g, req, exe, &flags, plan.script_pkgs, plan.lib_pkgs, seeds, &out, plan.opt_messages_path, plan.fast_mark);
     }
-    Ok(Built { scripts: out.scripts, lib: Some(NativeLib { path: plan.lib_path, statics: out.statics, crates: plan.names, partial: false }) })
+    Ok(Built { scripts: out.scripts, lib: Some(lib) })
+}
+
+/// The library of a build: its first tier's archives, or the optimized tier's once that build
+/// finished with the first tier's script outputs (`optimize_later`) and its archives are there.
+fn native_lib(g: &Graph, seeds: &[usize], plan: &Plan, out: &Outputs, triple: &str) -> NativeLib {
+    let optimized = (!std::path::Path::new(&plan.fast_mark).is_file())
+        .then(|| std::fs::read_to_string(&plan.opt_messages_path).ok())
+        .flatten()
+        .and_then(|m| cached(&g.pkg, &script_table(g), seeds, &m));
+    let o = optimized.as_ref().unwrap_or(out);
+    NativeLib {
+        dir: plan.dir.clone(),
+        statics: out.statics.clone(),
+        crates: plan.names.clone(),
+        archives: o.archives.clone(),
+        search: o.search.clone(),
+        fw_search: o.fw_search.clone(),
+        dylibs: o.dylibs.clone(),
+        frameworks: o.frameworks.clone(),
+        link_args: o.link_args.clone(),
+        triple: triple.to_string(),
+        partial: false,
+    }
 }
 
 /// The script outputs of the native build already cached under `req`'s key (no cargo, no link):
 /// the cfgs, env and OUT_DIR a check compiles the native packages with. `None` when nothing is
 /// cached, when the receipt does not cover every seed (a partial build is not a build), or when
-/// the directories it names are gone. `cached` rejects the receipt of a build that did not link
-/// or whose library the target no longer holds, so only a whole build is read back as one.
+/// the directories it names are gone. `cached` rejects a build whose archives the target no
+/// longer holds, so only a whole build is read back as one.
 pub fn cached_scripts(g: &Graph, seeds: &[usize], req: &Request) -> Option<Vec<ScriptOut>> {
     cached_outputs(g, seeds, req).map(|(scripts, _)| scripts)
 }
 
-/// `cached_scripts` and the library the cached build linked (None when it linked nothing): what a
+/// `cached_scripts` and the cached build's library (None when its scripts link nothing): what a
 /// build script's own child run calls into.
 pub fn cached_outputs(g: &Graph, seeds: &[usize], req: &Request) -> Option<(Vec<ScriptOut>, Option<NativeLib>)> {
     let plan = plan(g, seeds, req);
     let messages = std::fs::read_to_string(&plan.messages_path).ok()?;
-    let out = cached(&g.pkg, &script_table(g), seeds, &messages, &plan.lib_path)?;
+    let out = cached(&g.pkg, &script_table(g), seeds, &messages)?;
     for &s in seeds {
         let (_, n, v) = &g.pkg[g.build_scripts[s].krate];
         if !out.scripts.iter().any(|o| g.pkg[o.krate].1 == *n && g.pkg[o.krate].2 == *v) {
@@ -504,7 +605,7 @@ pub fn cached_outputs(g: &Graph, seeds: &[usize], req: &Request) -> Option<(Vec<
         }
     }
     let links = !(out.archives.is_empty() && out.dylibs.is_empty() && out.frameworks.is_empty());
-    let lib = links.then(|| NativeLib { path: plan.lib_path.clone(), statics: out.statics.clone(), crates: plan.names.clone(), partial: false });
+    let lib = links.then(|| native_lib(g, seeds, &plan, &out, req.triple));
     Some((out.scripts, lib))
 }
 
@@ -550,11 +651,19 @@ pub fn write_receipt(g: &Graph, seeds: &[usize], scripts: &[ScriptOut], lib: Opt
     }
     let mut out = format!("{{\"scripts\":[{}]", entries.join(","));
     if let Some(lib) = lib {
+        let strings = |v: &[String]| format!("[{}]", v.iter().map(|n| json_string(n)).collect::<Vec<_>>().join(","));
         out.push_str(&format!(
-            ",\"lib\":{{\"path\":{},\"statics\":{},\"crates\":{}}}",
-            json_string(&lib.path),
-            list(&mut lib.statics.iter().map(|n| json_string(n))),
-            list(&mut lib.crates.iter().map(|n| json_string(n))),
+            ",\"lib\":{{\"dir\":{},\"statics\":{},\"crates\":{},\"archives\":{},\"search\":{},\"fw_search\":{},\"dylibs\":{},\"frameworks\":{},\"link_args\":{},\"triple\":{}}}",
+            json_string(&lib.dir),
+            strings(&lib.statics),
+            strings(&lib.crates),
+            strings(&lib.archives),
+            strings(&lib.search),
+            strings(&lib.fw_search),
+            strings(&lib.dylibs),
+            strings(&lib.frameworks),
+            strings(&lib.link_args),
+            json_string(&lib.triple),
         ));
     }
     out.push('}');
@@ -594,7 +703,7 @@ pub fn receipt_in(path: &str, dir: &str) -> Result<(), String> {
 }
 
 /// A script receipt (`write_receipt`), or None when there is none to use: unreadable, or naming an
-/// OUT_DIR or a library that is gone.
+/// OUT_DIR or an archive that is gone.
 pub fn read_receipt(path: &str) -> Option<Receipt> {
     let text = std::fs::read_to_string(path).ok()?;
     let j = crate::json::parse(text.as_bytes()).ok()?;
@@ -619,11 +728,23 @@ pub fn read_receipt(path: &str) -> Option<Receipt> {
     }
     let lib = match j.get("lib") {
         Some(l) => {
-            let path = l.get("path")?.str().to_string();
-            if !std::path::Path::new(&path).is_file() {
+            let archives = strs(l.get("archives"));
+            if !archives.iter().all(|a| std::path::Path::new(a).is_file()) {
                 return None;
             }
-            Some(NativeLib { path, statics: strs(l.get("statics")), crates: strs(l.get("crates")), partial: false })
+            Some(NativeLib {
+                dir: l.get("dir")?.str().to_string(),
+                statics: strs(l.get("statics")),
+                crates: strs(l.get("crates")),
+                archives,
+                search: strs(l.get("search")),
+                fw_search: strs(l.get("fw_search")),
+                dylibs: strs(l.get("dylibs")),
+                frameworks: strs(l.get("frameworks")),
+                link_args: strs(l.get("link_args")),
+                triple: l.get("triple")?.str().to_string(),
+                partial: false,
+            })
         }
         None => None,
     };
@@ -679,14 +800,12 @@ fn outputs(g: &Graph, seeds: &[usize], messages: &str) -> Result<Outputs, String
 
 /// The cargo run cached under this key (`messages`, written once that run succeeded) while what
 /// it names is still there: every script's OUT_DIR (generated sources the compile reads), as
-/// that run left it, and the linked library when the scripts link anything. Cargo writes
-/// `linked_libs` for every script, so a cfg/env-only script, which leaves no library, is reused
-/// on its OUT_DIR alone. The OUT_DIRs are cargo's, in the selection's target that other keys'
+/// that run left it, and the archives the scripts link. Cargo writes `linked_libs` for every
+/// script, so a cfg/env-only script, which leaves no archive, is reused on its OUT_DIR alone. The OUT_DIRs are cargo's, in the selection's target that other keys'
 /// builds share: a script that ran again since (under another key) left other files there.
-fn cached(pkg: &[(String, String, String)], scripts_of: &[(usize, Vec<String>)], seeds: &[usize], messages: &str, lib_path: &str) -> Option<Outputs> {
+fn cached(pkg: &[(String, String, String)], scripts_of: &[(usize, Vec<String>)], seeds: &[usize], messages: &str) -> Option<Outputs> {
     let out = outputs_with(pkg, scripts_of, seeds, messages).ok()?;
-    let links = !(out.archives.is_empty() && out.dylibs.is_empty() && out.frameworks.is_empty());
-    let there = out.scripts.iter().all(|s| std::path::Path::new(&s.out_dir).is_dir()) && (!links || std::path::Path::new(lib_path).is_file());
+    let there = out.scripts.iter().all(|s| std::path::Path::new(&s.out_dir).is_dir()) && out.archives.iter().all(|a| std::path::Path::new(a).is_file());
     let same_runs = out.runs.iter().all(|(dir, seen)| !seen.is_empty() && *seen == run_stamp(dir));
     // a variable a script reads is one of its inputs, as cargo has it: another value runs it again
     // (relax review B-M5: OPENSSL_DIR pointed at another OpenSSL, and the library built against
@@ -727,7 +846,8 @@ fn outputs_with(pkg: &[(String, String, String)], scripts_of: &[(usize, Vec<Stri
     // each static library with the search paths of the script that named it: the copy that script
     // built (a bundled sqlite in its OUT_DIR) wins over one of the same name in a path another
     // script added (on Linux, the system's non-PIC libsqlite3.a in the path fontconfig's script adds)
-    let mut static_homes: Vec<(String, Vec<String>)> = Vec::new();
+    // and the script's package (name, version): the order archives link in on Apple targets
+    let mut static_homes: Vec<(String, Vec<String>, (String, String))> = Vec::new();
     let mut archives: Vec<String> = Vec::new();
     let mut search: Vec<String> = Vec::new();
     let mut fw_search: Vec<String> = Vec::new();
@@ -787,7 +907,7 @@ fn outputs_with(pkg: &[(String, String, String)], scripts_of: &[(usize, Vec<Stri
             };
             match kind.as_str() {
                 "static" => {
-                    static_homes.push((name.clone(), own_search.clone()));
+                    static_homes.push((name.clone(), own_search.clone(), (n.to_string(), v.to_string())));
                     statics.push(name);
                 }
                 "framework" => {
@@ -803,7 +923,16 @@ fn outputs_with(pkg: &[(String, String, String)], scripts_of: &[(usize, Vec<Stri
         scripts.push(ScriptOut { ..out });
     }
     // the out dirs of the scripts hold archives too (cc's output is `native=<out_dir>`)
-    for (name, own_search) in &static_homes {
+    // The messages come in the order cargo's scripts finished, which differs between builds. ld64
+    // resolves across every archive whatever their order, but the first archive defining a symbol
+    // provides it: two archives carrying the same library (libwebrtc's and onnxruntime's protobuf)
+    // then linked from one build's order and failed with duplicate symbols from another's. The
+    // packages' order (each script's libraries in its own order) is the same for every build.
+    // (GNU ld takes archives in one pass, so there the order stays the one the scripts built in.)
+    if cfg!(target_vendor = "apple") {
+        static_homes.sort_by(|a, b| a.2.cmp(&b.2));
+    }
+    for (name, own_search, _) in &static_homes {
         let file = format!("lib{}.a", name);
         match own_search.iter().chain(search.iter()).map(|d| format!("{}/{}", d, file)).find(|p| std::path::Path::new(p).is_file()) {
             Some(p) => {
@@ -827,12 +956,13 @@ enum Tier {
 
 static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// The optimized tier of a first-tier library (module doc), on a background thread: cargo with
-/// the release opt-level in its own target, then, when its scripts said what the first tier's
-/// did, its archives linked over `lib_path` (the running process keeps the library it loaded).
-/// Once per process; a process that ends first leaves it to the next start (cargo resumes).
+/// The optimized tier of a first-tier build (module doc), on a background thread: cargo with the
+/// release opt-level in its own target, then, when its scripts said what the first tier's did,
+/// its messages written to `opt_messages_path`, so the next load links its archives (the running
+/// process keeps the library it loaded). Once per process; a process that ends first leaves it
+/// to the next start (cargo resumes).
 #[allow(clippy::too_many_arguments)]
-fn optimize_later(g: &Graph, req: &Request, exe: std::path::PathBuf, flags: &[&String], script_pkgs: Vec<String>, lib_pkgs: Vec<String>, seeds: &[usize], fast: &Outputs, lib_path: String, fast_mark: String) {
+fn optimize_later(g: &Graph, req: &Request, exe: std::path::PathBuf, flags: &[&String], script_pkgs: Vec<String>, lib_pkgs: Vec<String>, seeds: &[usize], fast: &Outputs, opt_messages_path: String, fast_mark: String) {
     if STARTED.swap(true, std::sync::atomic::Ordering::AcqRel) {
         return;
     }
@@ -841,7 +971,7 @@ fn optimize_later(g: &Graph, req: &Request, exe: std::path::PathBuf, flags: &[&S
     let scripts = script_table(g);
     let seeds = seeds.to_vec();
     let flags: Vec<String> = flags.iter().map(|f| f.to_string()).collect();
-    let (workspace, package, relax_dir, triple, resolvable) = (req.workspace.to_string(), req.package.to_string(), req.relax_dir.to_string(), req.triple.to_string(), req.resolvable);
+    let (workspace, package, relax_dir, triple) = (req.workspace.to_string(), req.package.to_string(), req.relax_dir.to_string(), req.triple.to_string());
     let said = |o: &Outputs| -> Vec<(usize, bool, Vec<String>, Vec<(String, String)>)> {
         let mut v: Vec<_> = o.scripts.iter().map(|s| (s.krate, s.host, s.cfgs.clone(), s.env.clone())).collect();
         v.sort();
@@ -866,8 +996,8 @@ fn optimize_later(g: &Graph, req: &Request, exe: std::path::PathBuf, flags: &[&S
             eprintln!("relax: --allow-c: the optimized native build's scripts said other cfgs or env than the first build's: its library is not taken");
             return;
         }
-        let tmp = format!("{}.opt{}", lib_path, std::process::id());
-        if link(&tmp, &o, &triple, resolvable).is_ok() && std::fs::rename(&tmp, &lib_path).is_ok() {
+        let tmp = format!("{}.tmp{}", opt_messages_path, std::process::id());
+        if std::fs::write(&tmp, &m).is_ok() && std::fs::rename(&tmp, &opt_messages_path).is_ok() {
             let _ = std::fs::remove_file(&fast_mark);
             
         } else {
@@ -1094,8 +1224,22 @@ fn json_string(s: &str) -> String {
     o
 }
 
+/// The C toolchain the native build runs (`cc --version`: its version and install folder). Build
+/// scripts record toolchain paths in their outputs (`rustc-link-search` of clang's runtime
+/// folder, a CMake cache's compiler), and cargo reruns no script when the toolchain changes: a
+/// Command Line Tools update left every script's output naming a folder it removed.
+fn c_toolchain_identity() -> &'static str {
+    static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ID.get_or_init(|| {
+        Command::new(cc()).arg("--version").output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_default()
+    })
+}
+
 fn selection_key(scripts: &[String], libs: &[String]) -> u64 {
     let mut h = fnv(b"target-compiler-probes-v5-link-args", 0xcbf29ce484222325);
+    h = fnv(c_toolchain_identity().as_bytes(), h);
     for list in [scripts, libs] {
         h = fnv(b"\xff", h);
         for name in list { h = fnv(name.as_bytes(), h); h = fnv(b"\0", h); }
@@ -1274,8 +1418,14 @@ fn c_runtime_libs(triple: &str) -> &'static [&'static str] {
     }
 }
 
-fn link(lib_path: &str, out: &Outputs, triple: &str, resolvable: Resolvable) -> Result<(), String> {
-    let (archives, search, fw_search, dylibs, frameworks) = (&out.archives, &out.search, &out.fw_search, &out.dylibs, &out.frameworks);
+/// Links `lib`'s archives into the shared library `lib_path` from `symbols`, the program's
+/// imports the archives define (as the object files spell them, and whether thread-local): as
+/// rustc's link of the program, an archive member is taken only for what a root or a taken member
+/// needs, the first archive defining a symbol providing it. An archive holding an object twice,
+/// or two archives carrying the same library (onnxruntime's and libwebrtc's protobuf), link as
+/// they do there.
+fn link(lib_path: &str, lib: &NativeLib, symbols: &std::collections::BTreeMap<String, bool>, resolvable: Resolvable) -> Result<(), String> {
+    let (archives, search, fw_search, dylibs, frameworks, triple) = (&lib.archives, &lib.search, &lib.fw_search, &lib.dylibs, &lib.frameworks, lib.triple.as_str());
     if let Some(d) = std::path::Path::new(lib_path).parent() {
         let _ = std::fs::create_dir_all(d);
     }
@@ -1286,13 +1436,21 @@ fn link(lib_path: &str, out: &Outputs, triple: &str, resolvable: Resolvable) -> 
     let mut cmd = Command::new(cc());
     if cfg!(target_os = "macos") {
         cmd.args(["-dynamiclib", "-o", &tmp, "-Wl,-undefined,dynamic_lookup"]);
-        for a in archives {
-            cmd.arg(format!("-Wl,-force_load,{}", a));
-        }
+        // a clang response file holds the roots' `-u`s (ld64 reads none itself; `-Xlinker` keeps
+        // a name whole where `-Wl,` splits at commas)
+        let args = symbols.keys().map(|name| {
+            format!("-Xlinker -u -Xlinker \"{}\"\n", name.replace('\\', "\\\\").replace('"', "\\\""))
+        }).collect::<String>();
+        std::fs::write(&symbols_path, args).map_err(|e| format!("{symbols_path}: {e}"))?;
+        cmd.arg(format!("@{symbols_path}"));
         // C built with -fvisibility=hidden and assembly's `.private_extern` (ring's core) stay
         // local to the library, where dlsym cannot see them: the same address accessors as Linux
-        compile_accessors(&macho_archive_symbols(archives)?, &tmp, &addresses_path)?;
+        if let Err(e) = compile_accessors(symbols, &tmp, &addresses_path) {
+            let _ = std::fs::remove_file(&symbols_path);
+            return Err(e);
+        }
         cmd.arg(&addresses_path);
+        cmd.args(archives);
     } else {
         cmd.args(["-shared", "-fPIC", "-o", &tmp]);
         if cfg!(target_os = "linux") {
@@ -1303,32 +1461,14 @@ fn link(lib_path: &str, out: &Outputs, triple: &str, resolvable: Resolvable) -> 
             // All imports must be bound before the program starts.
             cmd.arg("-Wl,-z,now");
         }
-        // Force each exported symbol through normal archive extraction. A merged
-        // archive may contain the same object twice; --whole-archive would load
-        // both copies and fail with duplicate definitions. Each symbol notes whether
-        // it is thread-local (the address accessors below leave those out).
-        let mut symbols = std::collections::BTreeMap::new();
-        for archive in archives {
-            let out = Command::new("nm").args(["-g", "--defined-only", "--format=sysv", archive])
-                .output().map_err(|e| format!("--allow-c: cannot read archive symbols: {e}"))?;
-            if !out.status.success() {
-                return Err(format!("--allow-c: nm failed for {archive}: {}", String::from_utf8_lossy(&out.stderr)));
-            }
-            // name | value | class | type | size | line | section; the member and column headers have no `|`
-            for line in String::from_utf8_lossy(&out.stdout).lines() {
-                let columns: Vec<&str> = line.split('|').map(str::trim).collect();
-                if columns.len() >= 4 && columns[2].len() == 1 && !columns[0].is_empty() {
-                    symbols.insert(columns[0].to_string(), columns[3] == "TLS");
-                }
-            }
-        }
+        // the roots, through normal archive extraction
         let args = symbols.keys().map(|name| {
             format!("--undefined=\"{}\"\n", name.replace('\\', "\\\\").replace('"', "\\\""))
         }).collect::<String>();
         std::fs::write(&symbols_path, args).map_err(|e| format!("{symbols_path}: {e}"))?;
         cmd.arg(format!("-Wl,@{symbols_path}"));
         if cfg!(target_os = "linux") {
-            if let Err(e) = compile_accessors(&symbols, &tmp, &addresses_path) {
+            if let Err(e) = compile_accessors(symbols, &tmp, &addresses_path) {
                 let _ = std::fs::remove_file(&symbols_path);
                 return Err(e);
             }
@@ -1362,7 +1502,7 @@ fn link(lib_path: &str, out: &Outputs, triple: &str, resolvable: Resolvable) -> 
     }
     // the program's own link arguments, as rustc gives them to the linker for its binary (an rpath
     // that finds a library of the scripts' search folders at load time)
-    cmd.args(&out.link_args);
+    cmd.args(&lib.link_args);
     let run = |cmd: &mut Command| -> Result<(), String> {
         let out = cmd.output().map_err(|e| format!("--allow-c: cannot run the C compiler to link the native library: {e}"))?;
         if out.status.success() {
@@ -1441,6 +1581,30 @@ fn compile_accessors(symbols: &std::collections::BTreeMap<String, bool>, tmp: &s
         return Err(format!("--allow-c: {e}"));
     }
     Ok(())
+}
+
+/// The defined global symbols of `archives` as the object files spell them, each with whether it
+/// is thread-local (the address accessors leave those out).
+fn archive_symbols(archives: &[String]) -> Result<std::collections::BTreeMap<String, bool>, String> {
+    if cfg!(target_vendor = "apple") {
+        return macho_archive_symbols(archives);
+    }
+    let mut symbols = std::collections::BTreeMap::new();
+    for archive in archives {
+        let out = Command::new("nm").args(["-g", "--defined-only", "--format=sysv", archive])
+            .output().map_err(|e| format!("--allow-c: cannot read archive symbols: {e}"))?;
+        if !out.status.success() {
+            return Err(format!("--allow-c: nm failed for {archive}: {}", String::from_utf8_lossy(&out.stderr)));
+        }
+        // name | value | class | type | size | line | section; the member and column headers have no `|`
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let columns: Vec<&str> = line.split('|').map(str::trim).collect();
+            if columns.len() >= 4 && columns[2].len() == 1 && !columns[0].is_empty() {
+                symbols.insert(columns[0].to_string(), columns[3] == "TLS");
+            }
+        }
+    }
+    Ok(symbols)
 }
 
 /// The defined global symbols of Mach-O archives (`nm -g --defined-only -m`: one
@@ -1780,7 +1944,7 @@ fn native_key_follows_the_resolved_closure_and_its_path_sources() {
     };
     let flags: Vec<String> = Vec::new();
     let relax_dir = dir.join("relax");
-    let req = Request { workspace: ws.to_str().unwrap(), package: "app", cargo_flags: &flags, relax_dir: relax_dir.to_str().unwrap(), triple: "x86_64-unknown-linux-gnu", resolvable: |names, _, _, _| vec![false; names.len()], quiet: false };
+    let req = Request { workspace: ws.to_str().unwrap(), package: "app", cargo_flags: &flags, relax_dir: relax_dir.to_str().unwrap(), triple: "x86_64-unknown-linux-gnu", quiet: false };
     let key = |g: &Graph| plan(g, &[0], &req).key;
     let k = key(&graph("app", &["std"], &["a"]));
     assert_eq!(k, key(&graph("second", &["std"], &["a"])), "another package with the same native closure must share the build");
@@ -1797,8 +1961,6 @@ fn a_cached_cargo_run_stands_while_what_it_names_is_there() {
     let dir = std::env::temp_dir().join(format!("relax-native-cached-{}", std::process::id()));
     let out_dir = dir.join("out");
     std::fs::create_dir_all(&out_dir).unwrap();
-    let lib = dir.join("libnative.so");
-    let lib = lib.to_str().unwrap();
     let pkg = [(String::new(), "cfg_only".to_string(), "1.0.0".to_string())];
     let scripts = [(0, Vec::new())];
     let quoted = out_dir.to_str().unwrap().replace('\\', "\\\\").replace('"', "\\\"");
@@ -1808,16 +1970,15 @@ fn a_cached_cargo_run_stands_while_what_it_names_is_there() {
     assert!(!run.is_empty());
     let msg_run = |libs: &str, run: &str| format!(r#"{{"relax_host":false,"relax_run":"{run}","reason":"build-script-executed","package_id":"registry+https://example.test/index#cfg_only@1.0.0","linked_libs":{libs},"linked_paths":["native={quoted}"],"cfgs":["has_feature"],"env":[["GENERATED","yes"]],"out_dir":"{quoted}"}}"#);
     let msg = |libs: &str| msg_run(libs, &run);
-    let hit = |m: &str| cached(&pkg, &scripts, &[0], m, lib).is_some();
-    // a script that links nothing leaves no library to find: cargo is not run again
-    assert!(hit(&msg("[]")), "a cfg/env-only script's run is reused without a library");
-    // one that links something needs the linked library
-    assert!(!hit(&msg(r#"["dylib=m"]"#)), "a system library to link, no library yet");
+    let hit = |m: &str| cached(&pkg, &scripts, &[0], m).is_some();
+    // a script that links nothing, or only a system library, leaves no archive to find: cargo is
+    // not run again (the library is linked when the run loads it)
+    assert!(hit(&msg("[]")), "a cfg/env-only script's run is reused");
+    assert!(hit(&msg(r#"["dylib=m"]"#)), "a system library is linked at load time");
+    // one that links an archive needs the archive
     assert!(!hit(&msg(r#"["static=gen"]"#)), "an archive missing from its search path");
     std::fs::write(out_dir.join("libgen.a"), b"!<arch>\n").unwrap();
-    assert!(!hit(&msg(r#"["static=gen"]"#)), "an archive to link, no library yet");
-    std::fs::write(lib, b"").unwrap();
-    assert!(hit(&msg(r#"["static=gen"]"#)) && hit(&msg(r#"["dylib=m"]"#)), "the linked library is there");
+    assert!(hit(&msg(r#"["static=gen"]"#)), "the archive is there");
     let m = msg("[]");
     assert!(!hit(&m[..m.len() - 1]), "a cut-off message file is no hit");
     // the OUT_DIR is shared with other keys' builds of the selection: a later run of the script
@@ -1829,6 +1990,54 @@ fn a_cached_cargo_run_stands_while_what_it_names_is_there() {
     // generated sources live in OUT_DIR: a run whose OUT_DIR is gone is no hit, library or not
     std::fs::remove_dir_all(&out_dir).unwrap();
     assert!(!hit(&msg("[]")) && !hit(&msg(r#"["dylib=m"]"#)), "a removed OUT_DIR");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Two scripts that link a static library of the same name (tree-sitter grammars: `static=parser`
+/// each from its own OUT_DIR) link both archives, each found in its own script's folder.
+#[cfg(test)]
+#[test]
+fn same_named_static_libraries_come_from_each_scripts_own_folder() {
+    let dir = std::env::temp_dir().join(format!("relax-native-same-name-{}", std::process::id()));
+    let pkg = [(String::new(), "grammar_a".to_string(), "0.1.0".to_string()), (String::new(), "grammar_b".to_string(), "0.1.0".to_string())];
+    let scripts = [(0, Vec::new()), (1, Vec::new())];
+    let mut messages = String::new();
+    for (_, name, _) in &pkg {
+        let out = dir.join(name).join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(out.join("libparser.a"), b"!<arch>\n").unwrap();
+        let quoted = out.to_str().unwrap().replace('\\', "\\\\").replace('"', "\\\"");
+        messages.push_str(&format!(r#"{{"relax_host":false,"reason":"build-script-executed","package_id":"registry+https://example.test/index#{name}@0.1.0","linked_libs":["static=parser"],"linked_paths":["native={quoted}"],"cfgs":[],"env":[],"out_dir":"{quoted}"}}"#));
+        messages.push('\n');
+    }
+    let out = outputs_with(&pkg, &scripts, &[0, 1], &messages).unwrap();
+    let want: Vec<String> = ["grammar_a", "grammar_b"].iter().map(|n| dir.join(n).join("out").join("libparser.a").to_str().unwrap().to_string()).collect();
+    assert_eq!(out.archives, want);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The archives' order does not follow the order cargo's scripts finished in (ld64 takes a symbol
+/// that two archives define from the first: webrtc-sys's and ort-sys's protobuf linked from one
+/// build and failed with duplicate symbols from the next).
+#[cfg(all(test, target_vendor = "apple"))]
+#[test]
+fn archive_order_is_the_same_whichever_script_finished_first() {
+    let dir = std::env::temp_dir().join(format!("relax-native-archive-order-{}", std::process::id()));
+    let pkg = [(String::new(), "ort-sys".to_string(), "2.0.0".to_string()), (String::new(), "webrtc-sys".to_string(), "0.3.0".to_string())];
+    let scripts = [(0, Vec::new()), (1, Vec::new())];
+    let message = |name: &str, lib: &str| {
+        let out = dir.join(name).join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(out.join(format!("lib{lib}.a")), b"!<arch>\n").unwrap();
+        let quoted = out.to_str().unwrap().replace('\\', "\\\\").replace('"', "\\\"");
+        format!("{{\"relax_host\":false,\"reason\":\"build-script-executed\",\"package_id\":\"registry+https://example.test/index#{name}@{}\",\"linked_libs\":[\"static={lib}\"],\"linked_paths\":[\"native={quoted}\"],\"cfgs\":[],\"env\":[],\"out_dir\":\"{quoted}\"}}\n",
+            if name == "ort-sys" { "2.0.0" } else { "0.3.0" })
+    };
+    let (ort, webrtc) = (message("ort-sys", "onnxruntime"), message("webrtc-sys", "webrtc"));
+    let ort_first = outputs_with(&pkg, &scripts, &[0, 1], &format!("{ort}{webrtc}")).unwrap();
+    let webrtc_first = outputs_with(&pkg, &scripts, &[0, 1], &format!("{webrtc}{ort}")).unwrap();
+    assert_eq!(ort_first.archives, webrtc_first.archives);
+    assert!(ort_first.archives[0].ends_with("libonnxruntime.a"), "{:?}", ort_first.archives);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1856,9 +2065,9 @@ fn the_native_prune_keeps_what_the_roots_name() {
     root("00000000000000a1", &workspace, "aaaaaaaaaaaaaaaa", "1111111111111111");
     let relax_dir = dir.to_str().unwrap();
     let flags = vec!["--tests".to_string()];
-    let req = Request { workspace: workspace.to_str().unwrap(), package: "app", cargo_flags: &flags, relax_dir, triple: "x86_64-unknown-linux-gnu", resolvable: |names, _, _, _| vec![false; names.len()], quiet: false };
+    let req = Request { workspace: workspace.to_str().unwrap(), package: "app", cargo_flags: &flags, relax_dir, triple: "x86_64-unknown-linux-gnu", quiet: false };
     let plan = Plan { script_pkgs: Vec::new(), lib_pkgs: Vec::new(), flags: flags.clone(), names: Vec::new(), key: 0xabababababababab, selection: 0x1111111111111111,
-        dir: String::new(), messages_path: String::new(), lib_path: String::new(), fast_mark: String::new() };
+        dir: String::new(), messages_path: String::new(), opt_messages_path: String::new(), fast_mark: String::new() };
     write_root(&req, &plan).unwrap();
     assert_eq!(std::fs::read_dir(native.join("roots")).unwrap().count(), 2, "one root file per slot, no temporary left");
     root("00000000000000b1", &dir.join("removed"), "bbbbbbbbbbbbbbbb", "2222222222222222");

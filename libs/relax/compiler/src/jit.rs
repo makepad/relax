@@ -4857,6 +4857,26 @@ fn const_eval_to_valtree(context: usize, _env: crate::tcx::TypingEnv, def: DefId
 // earlier miss), so each call reads the files that came since the last
 static SCANNED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+
+/// Symbol name of the foreign item `d` of `prog`: `#[link_name = ".."]` or its own name, as a C
+/// name (what dlsym is asked for).
+pub(crate) fn foreign_link_name(prog: &crate::program::Program, d: DefId) -> String {
+    let def = prog.def(d);
+    let f = &prog.files[def.file as usize];
+    for a in f.ast.list(f.ast.item(def.item).attrs) {
+        if a.toks.hi >= a.toks.lo + 3 && f.tok_text(a.toks.lo) == "link_name" && f.tok_text(a.toks.lo + 1) == "=" {
+            let name = crate::lit::unescape_str(f.tok_text(a.toks.lo + 2));
+            // LLVM's leading SOH requests an exact object-file symbol. Our lookups use
+            // C names, so undo Mach-O's ABI prefix only for these exact names.
+            if let Some(exact) = name.strip_prefix('\u{1}') {
+                return crate::global_asm::c_name(exact).to_string();
+            }
+            return name;
+        }
+    }
+    prog.name(d).to_string()
+}
+
 impl Unit {
     pub(crate) fn flush_query_errors(&mut self, finished: bool) {
         if !self.errors.is_empty() { self.query_errors.note_reported_error(); }
@@ -7108,20 +7128,7 @@ impl Unit {
 
     /// Symbol name of a foreign item: `#[link_name = ".."]` or its own name.
     pub(crate) fn link_name(&self, d: DefId) -> String {
-        let def = self.prog.def(d);
-        let f = &self.prog.files[def.file as usize];
-        for a in f.ast.list(f.ast.item(def.item).attrs) {
-            if a.toks.hi >= a.toks.lo + 3 && f.tok_text(a.toks.lo) == "link_name" && f.tok_text(a.toks.lo + 1) == "=" {
-                let name = crate::lit::unescape_str(f.tok_text(a.toks.lo + 2));
-                // LLVM's leading SOH requests an exact object-file symbol. Our lookups use
-                // C names, so undo Mach-O's ABI prefix only for these exact names.
-                if let Some(exact) = name.strip_prefix('\u{1}') {
-                    return crate::global_asm::c_name(exact).to_string();
-                }
-                return name;
-            }
-        }
-        self.prog.name(d).to_string()
+        foreign_link_name(&self.prog, d)
     }
 
     /// A foreign address already available in this process. Reverse pointer attribution must

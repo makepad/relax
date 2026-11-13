@@ -802,7 +802,7 @@ pub(crate) fn resolve_package(
             // script's own child run never builds them again. A check without the flag reads the
             // script outputs of a native build already in the cache: same key, same cfgs/env/OUT_DIR.
             let triple = crate::cfg::CfgSet::host(sess, &[]).triple();
-            let native_request = std::env::var_os("RELAX_SCRIPT_DEPTH").is_none().then(|| crate::native::Request { workspace, package, cargo_flags, relax_dir: target_dir, triple, resolvable: native_resolvable, quiet: QUIET.load(Ordering::Relaxed) });
+            let native_request = std::env::var_os("RELAX_SCRIPT_DEPTH").is_none().then(|| crate::native::Request { workspace, package, cargo_flags, relax_dir: target_dir, triple, quiet: QUIET.load(Ordering::Relaxed) });
             let native_mode = native_request.as_ref().and_then(|req| {
                 if options.allow_c {
                     Some(crate::native::Mode::Build(req))
@@ -2937,7 +2937,7 @@ pub(crate) fn native_definition(name: &str) -> Option<u64> {
 /// linker would report, except in a program that links only some of the library's packages
 /// (`partial`): there the C that calls it is a package's the program does not link, and its slot
 /// stays unbound (relax issue 174).
-fn native_callbacks(prog: &crate::program::Program, n: &crate::native::NativeLib, handle: usize, crates: Option<&std::collections::HashSet<u32>>) -> Result<NativeCallbacks, String> {
+fn native_callbacks(prog: &crate::program::Program, n: &crate::native::NativeLib, path: &str, handle: usize, crates: Option<&std::collections::HashSet<u32>>) -> Result<NativeCallbacks, String> {
     let names = crate::os::proc::symbol_in(handle, crate::native_stub::NAMES);
     let slots = crate::os::proc::symbol_in(handle, crate::native_stub::SLOTS);
     if names == 0 || slots == 0 {
@@ -2958,11 +2958,25 @@ fn native_callbacks(prog: &crate::program::Program, n: &crate::native::NativeLib
         match exports.get(&name) {
             Some(&d) => out.push((here, d, name)),
             None if n.partial => {}
-            None => return Err(format!("cannot load {} (--allow-c native library of {}): its C code calls `{}`, which no library and no `#[no_mangle]` fn of the program defines", n.path, n.crates.join(", "), name)),
+            None => return Err(format!("cannot load {} (--allow-c native library of {}): its C code calls `{}`, which no library and no `#[no_mangle]` fn of the program defines", path, n.crates.join(", "), name)),
         }
     }
-    Ok(NativeCallbacks { lib: n.path.clone(), crates: n.crates.join(", "), slots: out })
+    Ok(NativeCallbacks { lib: path.to_string(), crates: n.crates.join(", "), slots: out })
 }
+
+/// The C names `prog`'s foreign fns and statics bind to (`#[link_name]`, else their own): the
+/// imports an `--allow-c` native library is linked for, as rustc links the binary for what its
+/// code refers to.
+fn foreign_imports(prog: &crate::program::Program) -> Vec<String> {
+    (0..prog.defs.len() as u32).map(DefId)
+        .filter(|&d| matches!(prog.def(d).kind, crate::program::DefKind::ForeignFn | crate::program::DefKind::ForeignStatic))
+        .map(|d| crate::jit::foreign_link_name(prog, d))
+        .collect()
+}
+
+/// The `--allow-c` native library this process loaded for each native build (its directory, the
+/// library): one serves every run and domain of the process, as the C state in it is one.
+static LOADED_NATIVE: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
 
 /// Who bound each callback slot of the process's native libraries: (slot, the run (None) or a
 /// domain, the fn). The run's (`reset_statics`): its binders end with the run and its fns are the
@@ -3020,13 +3034,26 @@ pub(crate) fn link_libraries(prog: &crate::program::Program, link_libs: &[(Strin
     // `--allow-c`: the native dependencies' library (front native.rs), its symbols global
     let mut callbacks = NativeCallbacks::default();
     if let Some(n) = native {
-        let loaded = crate::os::proc::load_path(&n.path).map_err(|error| {
-            format!("cannot load {} (--allow-c native library of {}): {}", n.path, n.crates.join(", "), error)
-        }).and_then(|handle| native_callbacks(prog, n, handle, crates).inspect(|_| note_native_bundle(handle, &n.path)));
+        // linked for the program's imports (front native.rs `NativeLib::link_for`)
+        let path = n.link_for(&foreign_imports(prog), native_resolvable)
+            .map_err(|error| format!("cannot link the --allow-c native library of {}: {}", n.crates.join(", "), error))?;
+        let mut loaded_native = LOADED_NATIVE.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, was)) = loaded_native.iter().find(|l| l.0 == n.dir).filter(|l| l.1 != path) {
+            return Err(format!(
+                "cannot load {path} (--allow-c native library of {}): the program's extern items name other C symbols than those {was} was linked for, and this process holds that library's C state; restart to link it again",
+                n.crates.join(", ")
+            ));
+        }
+        let loaded = crate::os::proc::load_path(&path).map_err(|error| {
+            format!("cannot load {} (--allow-c native library of {}): {}", path, n.crates.join(", "), error)
+        }).and_then(|handle| native_callbacks(prog, n, &path, handle, crates).inspect(|_| note_native_bundle(handle, &path)));
         // a library that does not load is not kept: what its link found (the libraries, which of
         // its imports are the program's callbacks) can be what changed since, and the next run
         // links it again
-        callbacks = loaded.inspect_err(|_| { let _ = std::fs::remove_file(&n.path); })?;
+        callbacks = loaded.inspect_err(|_| { let _ = std::fs::remove_file(&path); })?;
+        if !loaded_native.iter().any(|l| l.0 == n.dir) {
+            crate::zone_alloc::kept_with(|| loaded_native.push((n.dir.clone(), path.clone())));
+        }
     }
     let provided_static = |name: &str| native.is_some_and(|n| n.statics.iter().any(|s| s == name));
     for (name, fw) in link_libs {
