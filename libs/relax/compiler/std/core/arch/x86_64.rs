@@ -1234,17 +1234,7 @@ pub fn _mm256_zeroall() {}
 #[inline]
 #[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
 pub fn _mm512_add_epi32(a: __m512i, b: __m512i) -> __m512i {
-    unsafe {
-        let a = lanes512_i32(a);
-        let b = lanes512_i32(b);
-        let mut r = [0i32; 16];
-        let mut i = 0;
-        while i < 16 {
-            r[i] = a[i].wrapping_add(b[i]);
-            i += 1;
-        }
-        from512_i32(r)
-    }
+    unsafe { i512_join(_mm256_add_epi32(i512_lo(&a), i512_lo(&b)), _mm256_add_epi32(i512_hi(&a), i512_hi(&b))) }
 }
 
 #[inline]
@@ -1256,52 +1246,19 @@ pub unsafe fn _mm512_loadu_si512(mem_addr: *const __m512i) -> __m512i {
 #[inline]
 #[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512bw"))]
 pub fn _mm512_madd_epi16(a: __m512i, b: __m512i) -> __m512i {
-    unsafe {
-        let a = lanes512_i16(a);
-        let b = lanes512_i16(b);
-        let mut r = [0i32; 16];
-        let mut i = 0;
-        while i < 16 {
-            r[i] = (a[i * 2] as i32 * b[i * 2] as i32)
-                .wrapping_add(a[i * 2 + 1] as i32 * b[i * 2 + 1] as i32);
-            i += 1;
-        }
-        from512_i32(r)
-    }
+    unsafe { i512_join(_mm256_madd_epi16(i512_lo(&a), i512_lo(&b)), _mm256_madd_epi16(i512_hi(&a), i512_hi(&b))) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512bw"))]
 pub fn _mm512_maddubs_epi16(a: __m512i, b: __m512i) -> __m512i {
-    unsafe {
-        let a = lanes512_u8(a);
-        let b = lanes512_i8(b);
-        let mut r = [0i16; 32];
-        let mut i = 0;
-        while i < 32 {
-            r[i] = ((a[i * 2] as i32 * b[i * 2] as i32) + (a[i * 2 + 1] as i32 * b[i * 2 + 1] as i32))
-                .max(-32768)
-                .min(32767) as i16;
-            i += 1;
-        }
-        from512_i16(r)
-    }
+    unsafe { i512_join(_mm256_maddubs_epi16(i512_lo(&a), i512_lo(&b)), _mm256_maddubs_epi16(i512_hi(&a), i512_hi(&b))) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512bw"))]
 pub fn _mm512_sad_epu8(a: __m512i, b: __m512i) -> __m512i {
-    unsafe {
-        let a = lanes512_u8(a);
-        let b = lanes512_u8(b);
-        let mut r = [0i64; 8];
-        let mut i = 0;
-        while i < 64 {
-            r[i / 8] += ((a[i] as i16) - (b[i] as i16)).abs() as i64;
-            i += 1;
-        }
-        __m512i(r)
-    }
+    unsafe { i512_join(_mm256_sad_epu8(i512_lo(&a), i512_lo(&b)), _mm256_sad_epu8(i512_hi(&a), i512_hi(&b))) }
 }
 
 #[inline]
@@ -1461,13 +1418,7 @@ pub fn _mm512_set_epi64(
 #[inline]
 #[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
 pub fn _mm512_xor_si512(a: __m512i, b: __m512i) -> __m512i {
-    let mut r = [0i64; 8];
-    let mut i = 0;
-    while i < 8 {
-        r[i] = a.0[i] ^ b.0[i];
-        i += 1;
-    }
-    __m512i(r)
+    unsafe { i512_join(_mm256_xor_si256(i512_lo(&a), i512_lo(&b)), _mm256_xor_si256(i512_hi(&a), i512_hi(&b))) }
 }
 
 #[inline]
@@ -1479,22 +1430,10 @@ pub fn _mm512_clmulepi64_epi128<const IMM8: i32>(a: __m512i, b: __m512i) -> __m5
 
 #[inline]
 #[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
-#[rustc_legacy_const_generics(1)]
-pub fn _mm512_slli_epi32<const IMM8: u32>(a: __m512i) -> __m512i {
-    unsafe {
-        let a = lanes512_i32(a);
-        let mut r = [0i32; 16];
-        let mut i = 0;
-        while i < 16 {
-            r[i] = if (IMM8 as u32) < 32 {
-                a[i].wrapping_shl(IMM8 as u32)
-            } else {
-                0
-            };
-            i += 1;
-        }
-        from512_i32(r)
-    }
+
+#[cfg_attr(not(relax_check), rustc_legacy_const_generics(1))]
+pub fn _mm512_slli_epi32<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_slli_epi32::<IMM8>(i512_lo(&a)), _mm256_slli_epi32::<IMM8>(i512_hi(&a))) }
 }
 
 #[inline]
@@ -5680,17 +5619,7 @@ pub fn _mm512_permutex2var_epi64(a: __m512i, idx: __m512i, b: __m512i) -> __m512
 #[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
 #[rustc_legacy_const_generics(1)]
 pub fn _mm512_shuffle_epi32<const MASK: _MM_PERM_ENUM>(a: __m512i) -> __m512i {
-    unsafe {
-        const { assert!(MASK >= 0 && MASK < 256) };
-        let a = lanes512_i32(a);
-        let mut r = [0i32; 16];
-        let mut i = 0;
-        while i < 16 {
-            r[i] = a[(i / 4) * 4 + ((MASK >> (2 * (i % 4))) & 3) as usize];
-            i += 1;
-        }
-        from512_i32(r)
-    }
+    unsafe { i512_join(_mm256_shuffle_epi32::<MASK>(i512_lo(&a)), _mm256_shuffle_epi32::<MASK>(i512_hi(&a))) }
 }
 
 #[inline]
@@ -5713,13 +5642,7 @@ pub fn _mm512_shuffle_i32x4<const MASK: i32>(a: __m512i, b: __m512i) -> __m512i 
 #[inline]
 #[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
 pub fn _mm512_add_epi64(a: __m512i, b: __m512i) -> __m512i {
-    let mut r = [0i64; 8];
-    let mut i = 0;
-    while i < 8 {
-        r[i] = a.0[i].wrapping_add(b.0[i]);
-        i += 1;
-    }
-    __m512i(r)
+    unsafe { i512_join(_mm256_add_epi64(i512_lo(&a), i512_lo(&b)), _mm256_add_epi64(i512_hi(&a), i512_hi(&b))) }
 }
 
 #[inline]
@@ -5752,16 +5675,7 @@ pub fn _mm256_rol_epi32<const IMM8: i32>(a: __m256i) -> __m256i {
 #[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
 #[rustc_legacy_const_generics(1)]
 pub fn _mm512_rol_epi32<const IMM8: i32>(a: __m512i) -> __m512i {
-    unsafe {
-        const { assert!(IMM8 >= 0 && IMM8 < 256) };
-        let mut r = lanes512_i32(a);
-        let mut i = 0;
-        while i < 16 {
-            r[i] = (r[i] as u32).rotate_left(IMM8 as u32) as i32;
-            i += 1;
-        }
-        from512_i32(r)
-    }
+    unsafe { i512_join(_mm256_rol_epi32::<IMM8>(i512_lo(&a)), _mm256_rol_epi32::<IMM8>(i512_hi(&a))) }
 }
 
 #[inline]
@@ -30376,4 +30290,3035 @@ pub fn _mm512_gf2p8affineinv_epi64_epi8<const B: i32>(x: __m512i, a: __m512i) ->
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="gfni,avx512f"))]
 pub fn _mm512_gf2p8mul_epi8(a: __m512i, b: __m512i) -> __m512i {
     unsafe { i512_join(_mm256_gf2p8mul_epi8(i512_lo(&a), i512_lo(&b)), _mm256_gf2p8mul_epi8(i512_hi(&a), i512_hi(&b))) }
+}
+#[inline(always)]
+unsafe fn ps512_lo(a: &__m512) -> __m256 {
+    crate::ptr::read_unaligned(a as *const __m512 as *const __m256)
+}
+#[inline(always)]
+unsafe fn ps512_hi(a: &__m512) -> __m256 {
+    crate::ptr::read_unaligned((a as *const __m512 as *const u8).add(32) as *const __m256)
+}
+#[inline(always)]
+unsafe fn ps512_join(lo: __m256, hi: __m256) -> __m512 {
+    crate::mem::transmute::<[__m256; 2], __m512>([lo, hi])
+}
+#[inline(always)]
+unsafe fn pd512_lo(a: &__m512d) -> __m256d {
+    crate::ptr::read_unaligned(a as *const __m512d as *const __m256d)
+}
+#[inline(always)]
+unsafe fn pd512_hi(a: &__m512d) -> __m256d {
+    crate::ptr::read_unaligned((a as *const __m512d as *const u8).add(32) as *const __m256d)
+}
+#[inline(always)]
+unsafe fn pd512_join(lo: __m256d, hi: __m256d) -> __m512d {
+    crate::mem::transmute::<[__m256d; 2], __m512d>([lo, hi])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_castsi512_ps(a: __m512i) -> __m512 {
+    unsafe { crate::mem::transmute::<__m512i, __m512>(a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_cvtepu16_epi32(a: __m256i) -> __m512i {
+    unsafe { i512_join(_mm256_cvtepu16_epi32(i_lo(&a)), _mm256_cvtepu16_epi32(i_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_fmadd_ps(a: __m512, b: __m512, c: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_fmadd_ps(ps512_lo(&a), ps512_lo(&b), ps512_lo(&c)), _mm256_fmadd_ps(ps512_hi(&a), ps512_hi(&b), ps512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub unsafe fn _mm512_loadu_ps(mem_addr: *const f32) -> __m512 {
+    crate::ptr::read_unaligned(mem_addr as *const __m512)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub unsafe fn _mm512_storeu_ps(mem_addr: *mut f32, a: __m512) {
+    crate::ptr::write_unaligned(mem_addr as *mut __m512, a)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_reduce_add_ps(a: __m512) -> f32 {
+    // stdarch's evaluation order: fold 256-bit halves, then 128-bit halves, then
+    // movehdup/movehl pairs -- matching it keeps results bit-identical.
+    let b = [
+        a.0[0] + a.0[8],
+        a.0[1] + a.0[9],
+        a.0[2] + a.0[10],
+        a.0[3] + a.0[11],
+        a.0[4] + a.0[12],
+        a.0[5] + a.0[13],
+        a.0[6] + a.0[14],
+        a.0[7] + a.0[15],
+    ];
+    let c = [b[0] + b[4], b[1] + b[5], b[2] + b[6], b[3] + b[7]];
+    // final step is movehl + shuffle: (c0+c2) + (c1+c3), not pairwise.
+    (c[0] + c[2]) + (c[1] + c[3])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_setzero_ps() -> __m512 {
+    __m512([0.0; 16])
+}
+
+// VCVTPS2PH: IMM5[1:0] selects the rounding (0 nearest-even, 1 down, 2 up,
+// 3 truncate); IMM5[2] defers to MXCSR.RC, which MXCSR bits 13:14 answer.
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+#[cfg_attr(not(relax_check), rustc_legacy_const_generics(1))]
+pub fn _mm512_cvtps_ph<const IMM5: i32>(a: __m512) -> __m256i {
+    let mode = if IMM5 & 4 != 0 {
+        unsafe { ((crate::intrinsics_rt::fp_env_get() >> 13) & 3) as u32 }
+    } else {
+        (IMM5 & 3) as u32
+    };
+    let mut r = [0u16; 16];
+    let mut i = 0;
+    while i < 16 {
+        r[i] = f32_to_f16_bits(a.0[i], mode);
+        i += 1;
+    }
+    unsafe { from256_u16(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_cvtph_ps(a: __m256i) -> __m512 {
+    unsafe { ps512_join(_mm256_cvtph_ps(i_lo(&a)), _mm256_cvtph_ps(i_hi(&a))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512bw"))]
+pub fn _mm512_set1_epi8(a: i8) -> __m512i {
+    unsafe { from512_i8([a; 64]) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_set1_epi32(a: i32) -> __m512i {
+    unsafe { from512_i32([a; 16]) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_set1_epi64(a: i64) -> __m512i {
+    __m512i([a; 8])
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_set1_ps(a: f32) -> __m512 {
+    __m512([a; 16])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_and_si512(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_and_si256(i512_lo(&a), i512_lo(&b)), _mm256_and_si256(i512_hi(&a), i512_hi(&b))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_or_si512(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_or_si256(i512_lo(&a), i512_lo(&b)), _mm256_or_si256(i512_hi(&a), i512_hi(&b))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_andnot_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_andnot_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_andnot_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_add_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_add_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_add_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_sub_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_sub_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_sub_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_mul_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_mul_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_mul_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_div_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_div_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_div_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+fn x86_fmaddsub_f64(a: f64, b: f64, c: f64, i: usize) -> f64 {
+    if i % 2 == 0 {
+        x86_fmsub_f64(a, b, c)
+    } else if b.is_nan() {
+        quiet_f64(b)
+    } else if a.is_nan() {
+        quiet_f64(a)
+    } else if c.is_nan() {
+        quiet_f64(c)
+    } else {
+        a.mul_add(b, c)
+    }
+}
+fn x86_fmsubadd_f64(a: f64, b: f64, c: f64, i: usize) -> f64 {
+    if i % 2 == 1 {
+        x86_fmsub_f64(a, b, c)
+    } else if b.is_nan() {
+        quiet_f64(b)
+    } else if a.is_nan() {
+        quiet_f64(a)
+    } else if c.is_nan() {
+        quiet_f64(c)
+    } else {
+        a.mul_add(b, c)
+    }
+}
+fn fminsrc2_f32(a: f32, b: f32) -> f32 {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+fn fmaxsrc2_f32(a: f32, b: f32) -> f32 {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+fn fminsrc2_f64(a: f64, b: f64) -> f64 {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+fn fmaxsrc2_f64(a: f64, b: f64) -> f64 {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_fnmadd_ps(a: __m512, b: __m512, c: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_fnmadd_ps(ps512_lo(&a), ps512_lo(&b), ps512_lo(&c)), _mm256_fnmadd_ps(ps512_hi(&a), ps512_hi(&b), ps512_hi(&c))) }
+}
+// VSCALEFPS: dst = a * 2^floor(b). The f64 intermediate is exact for every
+// f32 input and exponent, so the single f64->f32 conversion rounds once, as
+// the instruction does, through the subnormal range too.
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_scalef_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_scalef_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_scalef_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512bw"))]
+pub fn _mm512_sub_epi8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_sub_epi8(i512_lo(&a), i512_lo(&b)), _mm256_sub_epi8(i512_hi(&a), i512_hi(&b))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_sub_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_sub_epi32(i512_lo(&a), i512_lo(&b)), _mm256_sub_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_mullo_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_mullo_epi32(i512_lo(&a), i512_lo(&b)), _mm256_mullo_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512bw"))]
+pub fn _mm512_abs_epi8(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_abs_epi8(i512_lo(&a)), _mm256_abs_epi8(i512_hi(&a))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_reduce_add_epi32(a: __m512i) -> i32 {
+    unsafe {
+        let a = lanes512_i32(a);
+        let mut sum = 0i32;
+        let mut i = 0;
+        while i < 16 {
+            sum = sum.wrapping_add(a[i]);
+            i += 1;
+        }
+        sum
+    }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_cvtepi8_epi32(a: __m128i) -> __m512i {
+    unsafe {
+        let a = lanes128_i8(a);
+        let mut r = [0i32; 16];
+        let mut i = 0;
+        while i < 16 {
+            r[i] = a[i] as i32;
+            i += 1;
+        }
+        from512_i32(r)
+    }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_cvtepi16_epi32(a: __m256i) -> __m512i {
+    unsafe { i512_join(_mm256_cvtepi16_epi32(i_lo(&a)), _mm256_cvtepi16_epi32(i_hi(&a))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_cvtepu8_epi32(a: __m128i) -> __m512i {
+    unsafe {
+        let a = lanes128_u8(a);
+        let mut r = [0i32; 16];
+        let mut i = 0;
+        while i < 16 {
+            r[i] = a[i] as i32;
+            i += 1;
+        }
+        from512_i32(r)
+    }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_cvtepi32_ps(a: __m512i) -> __m512 {
+    unsafe { ps512_join(_mm256_cvtepi32_ps(i512_lo(&a)), _mm256_cvtepi32_ps(i512_hi(&a))) }
+}
+// VCVTTPS2DQ: truncation; NaN and out-of-range give 0x80000000.
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_cvttps_epi32(a: __m512) -> __m512i {
+    unsafe { i512_join(_mm256_cvttps_epi32(ps512_lo(&a)), _mm256_cvttps_epi32(ps512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_sllv_epi64(a: __m512i, count: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_sllv_epi64(i512_lo(&a), i512_lo(&count)), _mm256_sllv_epi64(i512_hi(&a), i512_hi(&count))) }
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_srlv_epi64(a: __m512i, count: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_srlv_epi64(i512_lo(&a), i512_lo(&count)), _mm256_srlv_epi64(i512_hi(&a), i512_hi(&count))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512dq"))]
+pub fn _mm512_extractf32x8_ps<const MASK1: i32>(a: __m512) -> __m256 {
+    let mut r = [0.0f32; 8];
+    let base = (MASK1 & 1) as usize * 8;
+    let mut i = 0;
+    while i < 8 {
+        r[i] = a.0[base + i];
+        i += 1;
+    }
+    __m256(r)
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512dq"))]
+pub fn _mm512_insertf32x8<const MASK1: i32>(a: __m512, b: __m256) -> __m512 {
+    let mut r = a.0;
+    let base = (MASK1 & 1) as usize * 8;
+    let mut i = 0;
+    while i < 8 {
+        r[base + i] = b.0[i];
+        i += 1;
+    }
+    __m512(r)
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_inserti64x4<const MASK1: i32>(a: __m512i, b: __m256i) -> __m512i {
+    let mut r = a.0;
+    let base = (MASK1 & 1) as usize * 4;
+    let mut i = 0;
+    while i < 4 {
+        r[base + i] = b.0[i];
+        i += 1;
+    }
+    __m512i(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_castps256_ps512(a: __m256) -> __m512 {
+    let mut r = [0.0f32; 16];
+    let mut i = 0;
+    while i < 8 {
+        r[i] = a.0[i];
+        i += 1;
+    }
+    __m512(r)
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_castps512_ps256(a: __m512) -> __m256 {
+    let mut r = [0.0f32; 8];
+    let mut i = 0;
+    while i < 8 {
+        r[i] = a.0[i];
+        i += 1;
+    }
+    __m256(r)
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_castsi256_si512(a: __m256i) -> __m512i {
+    __m512i([a.0[0], a.0[1], a.0[2], a.0[3], 0, 0, 0, 0])
+}
+#[inline]
+#[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx512f"))]
+pub fn _mm512_castsi512_si256(a: __m512i) -> __m256i {
+    __m256i([a.0[0], a.0[1], a.0[2], a.0[3]])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_abs_epi16(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_abs_epi16(i512_lo(&a)), _mm256_abs_epi16(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_abs_epi32(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_abs_epi32(i512_lo(&a)), _mm256_abs_epi32(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_abs_epi64(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_abs_epi64(i512_lo(&a)), _mm256_abs_epi64(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_add_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_add_epi16(i512_lo(&a), i512_lo(&b)), _mm256_add_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_add_epi8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_add_epi8(i512_lo(&a), i512_lo(&b)), _mm256_add_epi8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_add_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_add_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_add_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_adds_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_adds_epi16(i512_lo(&a), i512_lo(&b)), _mm256_adds_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_adds_epi8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_adds_epi8(i512_lo(&a), i512_lo(&b)), _mm256_adds_epi8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_adds_epu16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_adds_epu16(i512_lo(&a), i512_lo(&b)), _mm256_adds_epu16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_adds_epu8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_adds_epu8(i512_lo(&a), i512_lo(&b)), _mm256_adds_epu8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_alignr_epi8<const IMM8: i32>(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_alignr_epi8::<IMM8>(i512_lo(&a), i512_lo(&b)), _mm256_alignr_epi8::<IMM8>(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_and_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_and_si256(i512_lo(&a), i512_lo(&b)), _mm256_and_si256(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_and_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_and_si256(i512_lo(&a), i512_lo(&b)), _mm256_and_si256(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_and_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_and_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_and_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_and_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_and_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_and_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_andnot_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_andnot_si256(i512_lo(&a), i512_lo(&b)), _mm256_andnot_si256(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_andnot_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_andnot_si256(i512_lo(&a), i512_lo(&b)), _mm256_andnot_si256(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_andnot_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_andnot_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_andnot_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_andnot_si512(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_andnot_si256(i512_lo(&a), i512_lo(&b)), _mm256_andnot_si256(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_avg_epu16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_avg_epu16(i512_lo(&a), i512_lo(&b)), _mm256_avg_epu16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_avg_epu8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_avg_epu8(i512_lo(&a), i512_lo(&b)), _mm256_avg_epu8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_broadcastb_epi8(a: __m128i) -> __m512i {
+    unsafe { let x = lanes128_i8(a)[0]; let mut r = [0i8; 64]; let mut i = 0; while i < 64 { r[i] = x; i += 1; } from512_i8(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcastd_epi32(a: __m128i) -> __m512i {
+    unsafe { let x = lanes128_i32(a)[0]; let mut r = [0i32; 16]; let mut i = 0; while i < 16 { r[i] = x; i += 1; } from512_i32(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcastq_epi64(a: __m128i) -> __m512i {
+    unsafe { let x = lanes128_i64(a)[0]; let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = x; i += 1; } from512_i64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_broadcastw_epi16(a: __m128i) -> __m512i {
+    unsafe { let x = lanes128_i16(a)[0]; let mut r = [0i16; 32]; let mut i = 0; while i < 32 { r[i] = x; i += 1; } from512_i16(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_div_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_div_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_div_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmadd_pd(a: __m512d, b: __m512d, c: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_fmadd_pd(pd512_lo(&a), pd512_lo(&b), pd512_lo(&c)), _mm256_fmadd_pd(pd512_hi(&a), pd512_hi(&b), pd512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmaddsub_pd(a: __m512d, b: __m512d, c: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_fmaddsub_pd(pd512_lo(&a), pd512_lo(&b), pd512_lo(&c)), _mm256_fmaddsub_pd(pd512_hi(&a), pd512_hi(&b), pd512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmaddsub_ps(a: __m512, b: __m512, c: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_fmaddsub_ps(ps512_lo(&a), ps512_lo(&b), ps512_lo(&c)), _mm256_fmaddsub_ps(ps512_hi(&a), ps512_hi(&b), ps512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmsub_pd(a: __m512d, b: __m512d, c: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_fmsub_pd(pd512_lo(&a), pd512_lo(&b), pd512_lo(&c)), _mm256_fmsub_pd(pd512_hi(&a), pd512_hi(&b), pd512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmsub_ps(a: __m512, b: __m512, c: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_fmsub_ps(ps512_lo(&a), ps512_lo(&b), ps512_lo(&c)), _mm256_fmsub_ps(ps512_hi(&a), ps512_hi(&b), ps512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmsubadd_pd(a: __m512d, b: __m512d, c: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_fmsubadd_pd(pd512_lo(&a), pd512_lo(&b), pd512_lo(&c)), _mm256_fmsubadd_pd(pd512_hi(&a), pd512_hi(&b), pd512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmsubadd_ps(a: __m512, b: __m512, c: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_fmsubadd_ps(ps512_lo(&a), ps512_lo(&b), ps512_lo(&c)), _mm256_fmsubadd_ps(ps512_hi(&a), ps512_hi(&b), ps512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fnmadd_pd(a: __m512d, b: __m512d, c: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_fnmadd_pd(pd512_lo(&a), pd512_lo(&b), pd512_lo(&c)), _mm256_fnmadd_pd(pd512_hi(&a), pd512_hi(&b), pd512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fnmsub_pd(a: __m512d, b: __m512d, c: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_fnmsub_pd(pd512_lo(&a), pd512_lo(&b), pd512_lo(&c)), _mm256_fnmsub_pd(pd512_hi(&a), pd512_hi(&b), pd512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fnmsub_ps(a: __m512, b: __m512, c: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_fnmsub_ps(ps512_lo(&a), ps512_lo(&b), ps512_lo(&c)), _mm256_fnmsub_ps(ps512_hi(&a), ps512_hi(&b), ps512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_getexp_pd(a: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_getexp_pd(pd512_lo(&a)), _mm256_getexp_pd(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_getexp_ps(a: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_getexp_ps(ps512_lo(&a)), _mm256_getexp_ps(ps512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_getmant_pd<const NORM: i32, const SIGN: i32>(a: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_getmant_pd::<NORM,SIGN>(pd512_lo(&a)), _mm256_getmant_pd::<NORM,SIGN>(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_getmant_ps<const NORM: i32, const SIGN: i32>(a: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_getmant_ps::<NORM,SIGN>(ps512_lo(&a)), _mm256_getmant_ps::<NORM,SIGN>(ps512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i32gather_epi32<const SCALE: i32>(offsets: __m512i, slice: *const i32) -> __m512i {
+    unsafe { let idx = lanes512_u32(offsets); let mut r = [0u32; 16]; let mut i = 0; while i < 16 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i32) as u32; i += 1; } from512_u32(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i32gather_epi64<const SCALE: i32>(offsets: __m256i, slice: *const i64) -> __m512i {
+    unsafe { let idx = lanes256_u32(offsets); let mut r = [0u64; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i64) as u64; i += 1; } from512_u64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i32gather_pd<const SCALE: i32>(offsets: __m256i, slice: *const f64) -> __m512d {
+    unsafe { let idx = lanes256_u32(offsets); let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f64); i += 1; } __m512d(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i32gather_ps<const SCALE: i32>(offsets: __m512i, slice: *const f32) -> __m512 {
+    unsafe { let idx = lanes512_u32(offsets); let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f32); i += 1; } __m512(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i32scatter_epi32<const SCALE: i32>(slice: *mut i32, offsets: __m512i, src: __m512i) {
+    unsafe { let idx = lanes512_u32(offsets); let mut i = 0; while i < 16 { crate::ptr::write_unaligned((slice as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i32, lanes512_u32(src)[i] as i32); i += 1; } }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i32scatter_epi64<const SCALE: i32>(slice: *mut i64, offsets: __m256i, src: __m512i) {
+    unsafe { let idx = lanes256_u32(offsets); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((slice as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i64, lanes512_u64(src)[i] as i64); i += 1; } }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i32scatter_pd<const SCALE: i32>(slice: *mut f64, offsets: __m256i, src: __m512d) {
+    unsafe { let idx = lanes256_u32(offsets); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((slice as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f64, src.0[i]); i += 1; } }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i32scatter_ps<const SCALE: i32>(slice: *mut f32, offsets: __m512i, src: __m512) {
+    unsafe { let idx = lanes512_u32(offsets); let mut i = 0; while i < 16 { crate::ptr::write_unaligned((slice as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f32, src.0[i]); i += 1; } }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i64gather_epi32<const SCALE: i32>(offsets: __m512i, slice: *const i32) -> __m256i {
+    unsafe { let idx = lanes512_u64(offsets); let mut r = [0u32; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i32) as u32; i += 1; } from256_u32(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i64gather_epi64<const SCALE: i32>(offsets: __m512i, slice: *const i64) -> __m512i {
+    unsafe { let idx = lanes512_u64(offsets); let mut r = [0u64; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i64) as u64; i += 1; } from512_u64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i64gather_pd<const SCALE: i32>(offsets: __m512i, slice: *const f64) -> __m512d {
+    unsafe { let idx = lanes512_u64(offsets); let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f64); i += 1; } __m512d(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i64gather_ps<const SCALE: i32>(offsets: __m512i, slice: *const f32) -> __m256 {
+    unsafe { let idx = lanes512_u64(offsets); let mut r = [0.0f32; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f32); i += 1; } __m256(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i64scatter_epi32<const SCALE: i32>(slice: *mut i32, offsets: __m512i, src: __m256i) {
+    unsafe { let idx = lanes512_u64(offsets); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((slice as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i32, lanes256_u32(src)[i] as i32); i += 1; } }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i64scatter_epi64<const SCALE: i32>(slice: *mut i64, offsets: __m512i, src: __m512i) {
+    unsafe { let idx = lanes512_u64(offsets); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((slice as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i64, lanes512_u64(src)[i] as i64); i += 1; } }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i64scatter_pd<const SCALE: i32>(slice: *mut f64, offsets: __m512i, src: __m512d) {
+    unsafe { let idx = lanes512_u64(offsets); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((slice as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f64, src.0[i]); i += 1; } }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i64scatter_ps<const SCALE: i32>(slice: *mut f32, offsets: __m512i, src: __m256) {
+    unsafe { let idx = lanes512_u64(offsets); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((slice as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f32, src.0[i]); i += 1; } }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_insertf32x4<const MASK1: i32>(a: __m512, b: __m128) -> __m512 {
+    unsafe { let mut r = a; let src = &b as *const _ as *const u8; crate::ptr::copy_nonoverlapping(src, (&mut r as *mut _ as *mut u8).add((MASK1 as usize) * 16), 16); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_insertf64x2<const MASK1: i32>(a: __m512d, b: __m128d) -> __m512d {
+    unsafe { let mut r = a; let src = &b as *const _ as *const u8; crate::ptr::copy_nonoverlapping(src, (&mut r as *mut _ as *mut u8).add((MASK1 as usize) * 16), 16); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_insertf64x4<const MASK1: i32>(a: __m512d, b: __m256d) -> __m512d {
+    unsafe { let mut r = a; let src = &b as *const _ as *const u8; crate::ptr::copy_nonoverlapping(src, (&mut r as *mut _ as *mut u8).add((MASK1 as usize) * 32), 32); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_inserti32x4<const MASK1: i32>(a: __m512i, b: __m128i) -> __m512i {
+    unsafe { let mut r = a; let src = &b as *const _ as *const u8; crate::ptr::copy_nonoverlapping(src, (&mut r as *mut _ as *mut u8).add((MASK1 as usize) * 16), 16); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_inserti32x8<const MASK1: i32>(a: __m512i, b: __m256i) -> __m512i {
+    unsafe { let mut r = a; let src = &b as *const _ as *const u8; crate::ptr::copy_nonoverlapping(src, (&mut r as *mut _ as *mut u8).add((MASK1 as usize) * 32), 32); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_inserti64x2<const MASK1: i32>(a: __m512i, b: __m128i) -> __m512i {
+    unsafe { let mut r = a; let src = &b as *const _ as *const u8; crate::ptr::copy_nonoverlapping(src, (&mut r as *mut _ as *mut u8).add((MASK1 as usize) * 16), 16); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_load_epi32(mem_addr: *const u8) -> __m512i {
+    unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_load_epi64(mem_addr: *const u8) -> __m512i {
+    unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_load_pd(mem_addr: *const u8) -> __m512d {
+    unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512d) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_load_ps(mem_addr: *const u8) -> __m512 {
+    unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_load_si512(mem_addr: *const u8) -> __m512i {
+    unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_loadu_epi16(mem_addr: *const u8) -> __m512i {
+    unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_loadu_epi32(mem_addr: *const u8) -> __m512i {
+    unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_loadu_epi64(mem_addr: *const u8) -> __m512i {
+    unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_loadu_epi8(mem_addr: *const u8) -> __m512i {
+    unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_loadu_pd(mem_addr: *const u8) -> __m512d {
+    unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512d) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bitalg"))]
+pub fn _mm512_lzcnt_epi32(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_lzcnt_epi32(i512_lo(&a)), _mm256_lzcnt_epi32(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bitalg"))]
+pub fn _mm512_lzcnt_epi64(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_lzcnt_epi64(i512_lo(&a)), _mm256_lzcnt_epi64(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_max_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_max_epi16(i512_lo(&a), i512_lo(&b)), _mm256_max_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_max_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_max_epi32(i512_lo(&a), i512_lo(&b)), _mm256_max_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_max_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_max_epi64(i512_lo(&a), i512_lo(&b)), _mm256_max_epi64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_max_epi8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_max_epi8(i512_lo(&a), i512_lo(&b)), _mm256_max_epi8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_max_epu16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_max_epu16(i512_lo(&a), i512_lo(&b)), _mm256_max_epu16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_max_epu32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_max_epu32(i512_lo(&a), i512_lo(&b)), _mm256_max_epu32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_max_epu64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_max_epu64(i512_lo(&a), i512_lo(&b)), _mm256_max_epu64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_max_epu8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_max_epu8(i512_lo(&a), i512_lo(&b)), _mm256_max_epu8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_max_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_max_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_max_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_max_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_max_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_max_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_min_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_min_epi16(i512_lo(&a), i512_lo(&b)), _mm256_min_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_min_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_min_epi32(i512_lo(&a), i512_lo(&b)), _mm256_min_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_min_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_min_epi64(i512_lo(&a), i512_lo(&b)), _mm256_min_epi64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_min_epi8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_min_epi8(i512_lo(&a), i512_lo(&b)), _mm256_min_epi8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_min_epu16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_min_epu16(i512_lo(&a), i512_lo(&b)), _mm256_min_epu16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_min_epu32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_min_epu32(i512_lo(&a), i512_lo(&b)), _mm256_min_epu32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_min_epu64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_min_epu64(i512_lo(&a), i512_lo(&b)), _mm256_min_epu64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_min_epu8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_min_epu8(i512_lo(&a), i512_lo(&b)), _mm256_min_epu8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_min_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_min_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_min_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_min_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_min_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_min_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_mul_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_mul_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_mul_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_mullo_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_mullo_epi16(i512_lo(&a), i512_lo(&b)), _mm256_mullo_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_mullo_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_mullo_epi64(i512_lo(&a), i512_lo(&b)), _mm256_mullo_epi64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_or_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_or_epi32(i512_lo(&a), i512_lo(&b)), _mm256_or_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_or_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_or_epi64(i512_lo(&a), i512_lo(&b)), _mm256_or_epi64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_or_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_or_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_or_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_or_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_or_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_or_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_packs_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_packs_epi16(i512_lo(&a), i512_lo(&b)), _mm256_packs_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_packs_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_packs_epi32(i512_lo(&a), i512_lo(&b)), _mm256_packs_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_packus_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_packus_epi16(i512_lo(&a), i512_lo(&b)), _mm256_packus_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_packus_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_packus_epi32(i512_lo(&a), i512_lo(&b)), _mm256_packus_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_add_epi64(a: __m512i) -> i64 {
+    unsafe { let a = lanes512_i64(a); let mut r: i64 = a[0]; let mut i = 1; while i < 8 { r = r.wrapping_add(a[i]); i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_add_pd(a: __m512d) -> f64 {
+    let a = a.0; let mut t = [0.0f64; 4]; let mut i = 0; while i < 4 { t[i] = a[i] + a[i+4]; i += 1; } let mut u = [0.0f64; 2]; let mut j = 0; while j < 2 { u[j] = t[j] + t[j+2]; j += 1; } u[0] + u[1]
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_and_epi32(a: __m512i) -> i32 {
+    unsafe { let a = lanes512_i32(a); let mut r: i32 = a[0]; let mut i = 1; while i < 16 { r &= a[i]; i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_and_epi64(a: __m512i) -> i64 {
+    unsafe { let a = lanes512_i64(a); let mut r: i64 = a[0]; let mut i = 1; while i < 8 { r &= a[i]; i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_max_epi32(a: __m512i) -> i32 {
+    unsafe { let a = lanes512_i32(a); let mut r: i32 = a[0]; let mut i = 1; while i < 16 { r = r.max(a[i]); i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_max_epi64(a: __m512i) -> i64 {
+    unsafe { let a = lanes512_i64(a); let mut r: i64 = a[0]; let mut i = 1; while i < 8 { r = r.max(a[i]); i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_max_epu32(a: __m512i) -> u32 {
+    unsafe { let a = lanes512_u32(a); let mut r: u32 = a[0]; let mut i = 1; while i < 16 { r = r.max(a[i]); i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_max_epu64(a: __m512i) -> u64 {
+    unsafe { let a = lanes512_u64(a); let mut r: u64 = a[0]; let mut i = 1; while i < 8 { r = r.max(a[i]); i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_max_pd(a: __m512d) -> f64 {
+    let a = a.0; let mut t = [0.0f64; 4]; let mut i = 0; while i < 4 { t[i] = fmaxsrc2_f64(a[i], a[i+4]); i += 1; } let mut u = [0.0f64; 2]; let mut j = 0; while j < 2 { u[j] = fmaxsrc2_f64(t[j], t[j+2]); j += 1; } fmaxsrc2_f64(u[0], u[1])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_max_ps(a: __m512) -> f32 {
+    let a = a.0; let mut t = [0.0f32; 8]; let mut i = 0; while i < 8 { t[i] = fmaxsrc2_f32(a[i], a[i+8]); i += 1; } let mut u = [0.0f32; 4]; let mut j = 0; while j < 4 { u[j] = fmaxsrc2_f32(t[j], t[j+4]); j += 1; } fmaxsrc2_f32(fmaxsrc2_f32(u[0], u[2]), fmaxsrc2_f32(u[1], u[3]))
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_min_epi32(a: __m512i) -> i32 {
+    unsafe { let a = lanes512_i32(a); let mut r: i32 = a[0]; let mut i = 1; while i < 16 { r = r.min(a[i]); i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_min_epi64(a: __m512i) -> i64 {
+    unsafe { let a = lanes512_i64(a); let mut r: i64 = a[0]; let mut i = 1; while i < 8 { r = r.min(a[i]); i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_min_epu32(a: __m512i) -> u32 {
+    unsafe { let a = lanes512_u32(a); let mut r: u32 = a[0]; let mut i = 1; while i < 16 { r = r.min(a[i]); i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_min_epu64(a: __m512i) -> u64 {
+    unsafe { let a = lanes512_u64(a); let mut r: u64 = a[0]; let mut i = 1; while i < 8 { r = r.min(a[i]); i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_min_pd(a: __m512d) -> f64 {
+    let a = a.0; let mut t = [0.0f64; 4]; let mut i = 0; while i < 4 { t[i] = fminsrc2_f64(a[i], a[i+4]); i += 1; } let mut u = [0.0f64; 2]; let mut j = 0; while j < 2 { u[j] = fminsrc2_f64(t[j], t[j+2]); j += 1; } fminsrc2_f64(u[0], u[1])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_min_ps(a: __m512) -> f32 {
+    let a = a.0; let mut t = [0.0f32; 8]; let mut i = 0; while i < 8 { t[i] = fminsrc2_f32(a[i], a[i+8]); i += 1; } let mut u = [0.0f32; 4]; let mut j = 0; while j < 4 { u[j] = fminsrc2_f32(t[j], t[j+4]); j += 1; } fminsrc2_f32(fminsrc2_f32(u[0], u[2]), fminsrc2_f32(u[1], u[3]))
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_mul_epi32(a: __m512i) -> i32 {
+    unsafe { let a = lanes512_i32(a); let mut r: i32 = a[0]; let mut i = 1; while i < 16 { r = r.wrapping_mul(a[i]); i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_mul_epi64(a: __m512i) -> i64 {
+    unsafe { let a = lanes512_i64(a); let mut r: i64 = a[0]; let mut i = 1; while i < 8 { r = r.wrapping_mul(a[i]); i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_mul_pd(a: __m512d) -> f64 {
+    let a = a.0; let mut t = [0.0f64; 4]; let mut i = 0; while i < 4 { t[i] = a[i] * a[i+4]; i += 1; } let mut u = [0.0f64; 2]; let mut j = 0; while j < 2 { u[j] = t[j] * t[j+2]; j += 1; } u[0] * u[1]
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_mul_ps(a: __m512) -> f32 {
+    let a = a.0; let mut t = [0.0f32; 8]; let mut i = 0; while i < 8 { t[i] = a[i] * a[i+8]; i += 1; } let mut u = [0.0f32; 4]; let mut j = 0; while j < 4 { u[j] = t[j] * t[j+4]; j += 1; } (u[0] * u[2]) * (u[1] * u[3])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_or_epi32(a: __m512i) -> i32 {
+    unsafe { let a = lanes512_i32(a); let mut r: i32 = a[0]; let mut i = 1; while i < 16 { r |= a[i]; i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_reduce_or_epi64(a: __m512i) -> i64 {
+    unsafe { let a = lanes512_i64(a); let mut r: i64 = a[0]; let mut i = 1; while i < 8 { r |= a[i]; i += 1; } r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_rol_epi64<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_rol_epi64::<IMM8>(i512_lo(&a)), _mm256_rol_epi64::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_rolv_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_rolv_epi32(i512_lo(&a), i512_lo(&b)), _mm256_rolv_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_rolv_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_rolv_epi64(i512_lo(&a), i512_lo(&b)), _mm256_rolv_epi64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_ror_epi32<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_ror_epi32::<IMM8>(i512_lo(&a)), _mm256_ror_epi32::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_ror_epi64<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_ror_epi64::<IMM8>(i512_lo(&a)), _mm256_ror_epi64::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_rorv_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_rorv_epi32(i512_lo(&a), i512_lo(&b)), _mm256_rorv_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_rorv_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_rorv_epi64(i512_lo(&a), i512_lo(&b)), _mm256_rorv_epi64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_scalef_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_scalef_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_scalef_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_set1_pd(a: f64) -> __m512d {
+    __m512d([a; 8])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_set_epi16(e0: i16, e1: i16, e2: i16, e3: i16, e4: i16, e5: i16, e6: i16, e7: i16, e8: i16, e9: i16, e10: i16, e11: i16, e12: i16, e13: i16, e14: i16, e15: i16, e16: i16, e17: i16, e18: i16, e19: i16, e20: i16, e21: i16, e22: i16, e23: i16, e24: i16, e25: i16, e26: i16, e27: i16, e28: i16, e29: i16, e30: i16, e31: i16) -> __m512i {
+    unsafe { crate::ptr::read_unaligned(&[e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16, e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0] as *const [i16; 32] as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_set_pd(e0: f64, e1: f64, e2: f64, e3: f64, e4: f64, e5: f64, e6: f64, e7: f64) -> __m512d {
+    __m512d([e7, e6, e5, e4, e3, e2, e1, e0])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_set_ps(e0: f32, e1: f32, e2: f32, e3: f32, e4: f32, e5: f32, e6: f32, e7: f32, e8: f32, e9: f32, e10: f32, e11: f32, e12: f32, e13: f32, e14: f32, e15: f32) -> __m512 {
+    __m512([e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_setr_epi32(e0: i32, e1: i32, e2: i32, e3: i32, e4: i32, e5: i32, e6: i32, e7: i32, e8: i32, e9: i32, e10: i32, e11: i32, e12: i32, e13: i32, e14: i32, e15: i32) -> __m512i {
+    unsafe { crate::ptr::read_unaligned(&[e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15] as *const [i32; 16] as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_setr_pd(e0: f64, e1: f64, e2: f64, e3: f64, e4: f64, e5: f64, e6: f64, e7: f64) -> __m512d {
+    __m512d([e0, e1, e2, e3, e4, e5, e6, e7])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_setr_ps(e0: f32, e1: f32, e2: f32, e3: f32, e4: f32, e5: f32, e6: f32, e7: f32, e8: f32, e9: f32, e10: f32, e11: f32, e12: f32, e13: f32, e14: f32, e15: f32) -> __m512 {
+    __m512([e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_setzero_pd() -> __m512d {
+    __m512d([0.0; 8])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_shuffle_epi8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_shuffle_epi8(i512_lo(&a), i512_lo(&b)), _mm256_shuffle_epi8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_shuffle_pd<const MASK1: i32>(a: __m512d, b: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { let blk = i/2; let pos = i%2; let sel = pos*1 + blk*2; r[i] = if pos < (2 / 2) { a[blk*2 + ((MASK1 >> sel) & 1) as usize] } else { b[blk*2 + ((MASK1 >> sel) & 1) as usize] }; i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_shuffle_ps<const MASK1: i32>(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_shuffle_ps::<MASK1>(ps512_lo(&a), ps512_lo(&b)), _mm256_shuffle_ps::<MASK1>(ps512_hi(&a), ps512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_sll_epi16(a: __m512i, count: __m128i) -> __m512i {
+    unsafe { i512_join(_mm256_sll_epi16(i512_lo(&a), count), _mm256_sll_epi16(i512_hi(&a), count)) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sll_epi32(a: __m512i, count: __m128i) -> __m512i {
+    unsafe { i512_join(_mm256_sll_epi32(i512_lo(&a), count), _mm256_sll_epi32(i512_hi(&a), count)) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sll_epi64(a: __m512i, count: __m128i) -> __m512i {
+    unsafe { i512_join(_mm256_sll_epi64(i512_lo(&a), count), _mm256_sll_epi64(i512_hi(&a), count)) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_slli_epi16<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_slli_epi16::<IMM8>(i512_lo(&a)), _mm256_slli_epi16::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_slli_epi64<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_slli_epi64::<IMM8>(i512_lo(&a)), _mm256_slli_epi64::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_sllv_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_sllv_epi16(i512_lo(&a), i512_lo(&b)), _mm256_sllv_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sllv_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_sllv_epi32(i512_lo(&a), i512_lo(&b)), _mm256_sllv_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_sra_epi16(a: __m512i, count: __m128i) -> __m512i {
+    unsafe { i512_join(_mm256_sra_epi16(i512_lo(&a), count), _mm256_sra_epi16(i512_hi(&a), count)) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sra_epi32(a: __m512i, count: __m128i) -> __m512i {
+    unsafe { i512_join(_mm256_sra_epi32(i512_lo(&a), count), _mm256_sra_epi32(i512_hi(&a), count)) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sra_epi64(a: __m512i, count: __m128i) -> __m512i {
+    unsafe { i512_join(_mm256_sra_epi64(i512_lo(&a), count), _mm256_sra_epi64(i512_hi(&a), count)) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_srai_epi16<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_srai_epi16::<IMM8>(i512_lo(&a)), _mm256_srai_epi16::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_srai_epi32<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_srai_epi32::<IMM8>(i512_lo(&a)), _mm256_srai_epi32::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_srai_epi64<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_srai_epi64::<IMM8>(i512_lo(&a)), _mm256_srai_epi64::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_srav_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_srav_epi16(i512_lo(&a), i512_lo(&b)), _mm256_srav_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_srav_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_srav_epi32(i512_lo(&a), i512_lo(&b)), _mm256_srav_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_srav_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_srav_epi64(i512_lo(&a), i512_lo(&b)), _mm256_srav_epi64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_srl_epi16(a: __m512i, count: __m128i) -> __m512i {
+    unsafe { i512_join(_mm256_srl_epi16(i512_lo(&a), count), _mm256_srl_epi16(i512_hi(&a), count)) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_srl_epi32(a: __m512i, count: __m128i) -> __m512i {
+    unsafe { i512_join(_mm256_srl_epi32(i512_lo(&a), count), _mm256_srl_epi32(i512_hi(&a), count)) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_srl_epi64(a: __m512i, count: __m128i) -> __m512i {
+    unsafe { i512_join(_mm256_srl_epi64(i512_lo(&a), count), _mm256_srl_epi64(i512_hi(&a), count)) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_srli_epi16<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_srli_epi16::<IMM8>(i512_lo(&a)), _mm256_srli_epi16::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_srli_epi32<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_srli_epi32::<IMM8>(i512_lo(&a)), _mm256_srli_epi32::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_srli_epi64<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_srli_epi64::<IMM8>(i512_lo(&a)), _mm256_srli_epi64::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_srlv_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_srlv_epi16(i512_lo(&a), i512_lo(&b)), _mm256_srlv_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_srlv_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_srlv_epi32(i512_lo(&a), i512_lo(&b)), _mm256_srlv_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_store_epi32(mem_addr: *mut u8, a: __m512i) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_store_epi64(mem_addr: *mut u8, a: __m512i) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_store_pd(mem_addr: *mut u8, a: __m512d) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512d, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_store_ps(mem_addr: *mut u8, a: __m512) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_store_si512(mem_addr: *mut u8, a: __m512i) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_storeu_epi16(mem_addr: *mut u8, a: __m512i) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_storeu_epi32(mem_addr: *mut u8, a: __m512i) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_storeu_epi64(mem_addr: *mut u8, a: __m512i) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_storeu_epi8(mem_addr: *mut u8, a: __m512i) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_storeu_pd(mem_addr: *mut u8, a: __m512d) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512d, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_stream_pd(mem_addr: *mut u8, a: __m512d) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512d, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_stream_ps(mem_addr: *mut u8, a: __m512) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_stream_si512(mem_addr: *mut u8, a: __m512i) -> () {
+    unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_sub_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_sub_epi16(i512_lo(&a), i512_lo(&b)), _mm256_sub_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sub_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_sub_epi64(i512_lo(&a), i512_lo(&b)), _mm256_sub_epi64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sub_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_sub_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_sub_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_subs_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_subs_epi16(i512_lo(&a), i512_lo(&b)), _mm256_subs_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_subs_epi8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_subs_epi8(i512_lo(&a), i512_lo(&b)), _mm256_subs_epi8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_subs_epu16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_subs_epu16(i512_lo(&a), i512_lo(&b)), _mm256_subs_epu16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_subs_epu8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_subs_epu8(i512_lo(&a), i512_lo(&b)), _mm256_subs_epu8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_ternarylogic_epi32<const IMM8: i32>(a: __m512i, b: __m512i, c: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_ternarylogic_epi32::<IMM8>(i512_lo(&a), i512_lo(&b), i512_lo(&c)), _mm256_ternarylogic_epi32::<IMM8>(i512_hi(&a), i512_hi(&b), i512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_ternarylogic_epi64<const IMM8: i32>(a: __m512i, b: __m512i, c: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_ternarylogic_epi64::<IMM8>(i512_lo(&a), i512_lo(&b), i512_lo(&c)), _mm256_ternarylogic_epi64::<IMM8>(i512_hi(&a), i512_hi(&b), i512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_unpackhi_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_unpackhi_epi16(i512_lo(&a), i512_lo(&b)), _mm256_unpackhi_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_unpackhi_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_unpackhi_epi32(i512_lo(&a), i512_lo(&b)), _mm256_unpackhi_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_unpackhi_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_unpackhi_epi64(i512_lo(&a), i512_lo(&b)), _mm256_unpackhi_epi64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_unpackhi_epi8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_unpackhi_epi8(i512_lo(&a), i512_lo(&b)), _mm256_unpackhi_epi8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_unpackhi_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_unpackhi_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_unpackhi_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_unpackhi_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_unpackhi_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_unpackhi_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_unpacklo_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_unpacklo_epi16(i512_lo(&a), i512_lo(&b)), _mm256_unpacklo_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_unpacklo_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_unpacklo_epi32(i512_lo(&a), i512_lo(&b)), _mm256_unpacklo_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_unpacklo_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_unpacklo_epi64(i512_lo(&a), i512_lo(&b)), _mm256_unpacklo_epi64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_unpacklo_epi8(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_unpacklo_epi8(i512_lo(&a), i512_lo(&b)), _mm256_unpacklo_epi8(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_unpacklo_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_unpacklo_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_unpacklo_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_unpacklo_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_unpacklo_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_unpacklo_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_xor_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_xor_epi32(i512_lo(&a), i512_lo(&b)), _mm256_xor_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_xor_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_xor_epi64(i512_lo(&a), i512_lo(&b)), _mm256_xor_epi64(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_xor_pd(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_xor_pd(pd512_lo(&a), pd512_lo(&b)), _mm256_xor_pd(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_xor_ps(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_xor_ps(ps512_lo(&a), ps512_lo(&b)), _mm256_xor_ps(ps512_hi(&a), ps512_hi(&b))) }
+}
+unsafe fn from512_u32(a: [u32; 16]) -> __m512i { crate::ptr::read_unaligned(&a as *const [u32; 16] as *const __m512i) }
+unsafe fn from512_u64(a: [u64; 8]) -> __m512i { crate::ptr::read_unaligned(&a as *const [u64; 8] as *const __m512i) }
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_abs_pd(a: __m512d) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[i].abs(); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_abs_ps(a: __m512) -> __m512 {
+    let a = a.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = a[i].abs(); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_add_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[i] + b[i]; i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_add_round_ps<const ROUNDING: i32>(a: __m512, b: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = a[i] + b[i]; i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcast_f32x2(a: __m128) -> __m512 {
+    let a = a.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = a[i % 2]; i += 1; } (__m512)(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcast_f32x4(a: __m128) -> __m512 {
+    let a = a.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = a[i % 4]; i += 1; } (__m512)(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcast_f32x8(a: __m256) -> __m512 {
+    let a = a.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = a[i % 8]; i += 1; } (__m512)(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcast_f64x2(a: __m128d) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[i % 2]; i += 1; } (__m512d)(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcast_f64x4(a: __m256d) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[i % 4]; i += 1; } (__m512d)(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcast_i32x2(a: __m128i) -> __m512i {
+    unsafe { let a = lanes128_i32(a); let mut r = [0i32; 16]; let mut i = 0; while i < 16 { r[i] = a[i % 2]; i += 1; } from512_i32(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcast_i32x8(a: __m256i) -> __m512i {
+    unsafe { let a = lanes256_i32(a); let mut r = [0i32; 16]; let mut i = 0; while i < 16 { r[i] = a[i % 8]; i += 1; } from512_i32(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcast_i64x2(a: __m128i) -> __m512i {
+    unsafe { let a = lanes128_i64(a); let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = a[i % 2]; i += 1; } from512_i64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcast_i64x4(a: __m256i) -> __m512i {
+    unsafe { let a = lanes256_i64(a); let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = a[i % 4]; i += 1; } from512_i64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcastsd_pd(a: __m128d) -> __m512d {
+    let v = a.0[0]; __m512d([v; 8])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcastss_ps(a: __m128) -> __m512 {
+    let v = a.0[0]; __m512([v; 16])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_castpd128_pd512(a: __m128d) -> __m512d {
+    unsafe { let mut r = __m512d([0.0f64;8]); crate::ptr::write_unaligned(&mut r as *mut __m512d as *mut __m128d, a); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_castpd256_pd512(a: __m256d) -> __m512d {
+    unsafe { let mut r = __m512d([0.0f64;8]); crate::ptr::write_unaligned(&mut r as *mut __m512d as *mut __m256d, a); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vl"))]
+pub fn _mm512_castpd512_pd128(a: __m512d) -> __m128d {
+    unsafe { crate::ptr::read_unaligned(&a as *const __m512d as *const __m128d) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vl"))]
+pub fn _mm512_castpd512_pd256(a: __m512d) -> __m256d {
+    unsafe { crate::ptr::read_unaligned(&a as *const __m512d as *const __m256d) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_castpd_ps(a: __m512d) -> __m512 {
+    crate::mem::transmute::<__m512d, __m512>(a)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_castpd_si512(a: __m512d) -> __m512i {
+    crate::mem::transmute::<__m512d, __m512i>(a)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_castps128_ps512(a: __m128) -> __m512 {
+    unsafe { let mut r = __m512([0.0f32;16]); crate::ptr::write_unaligned(&mut r as *mut __m512 as *mut __m128, a); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vl"))]
+pub fn _mm512_castps512_ps128(a: __m512) -> __m128 {
+    unsafe { crate::ptr::read_unaligned(&a as *const __m512 as *const __m128) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_castps_pd(a: __m512) -> __m512d {
+    crate::mem::transmute::<__m512, __m512d>(a)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_castps_si512(a: __m512) -> __m512i {
+    crate::mem::transmute::<__m512, __m512i>(a)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_castsi512_pd(a: __m512i) -> __m512d {
+    crate::mem::transmute::<__m512i, __m512d>(a)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512cd"))]
+pub fn _mm512_conflict_epi32(a: __m512i) -> __m512i {
+    unsafe { let a = lanes512_i32(a); let mut r = [0i32; 16]; let mut i = 0; while i < 16 { let mut m0 = 0i32; let mut j = 0; while j < i { if a[j] == a[i] { m0 |= 1 << j; } j += 1; } r[i] = m0; i += 1; } from512_i32(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512cd"))]
+pub fn _mm512_conflict_epi64(a: __m512i) -> __m512i {
+    unsafe { let a = lanes512_i64(a); let mut r = [0i64; 8]; let mut i = 0; while i < 8 { let mut m0 = 0i64; let mut j = 0; while j < i { if a[j] == a[i] { m0 |= 1 << j; } j += 1; } r[i] = m0; i += 1; } from512_i64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundepi32_ps<const ROUNDING: i32>(a: __m512i) -> __m512 {
+    unsafe { let a = crate::ptr::read_unaligned(&a as *const __m512i as *const [i32; 16]); let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = a[i] as i32 as f32; i += 1; } crate::ptr::read_unaligned(&r as *const [f32; 16] as *const __m512) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundepi64_pd<const ROUNDING: i32>(a: __m512i) -> __m512d {
+    unsafe { let a = crate::ptr::read_unaligned(&a as *const __m512i as *const [i64; 8]); let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[i] as i64 as f64; i += 1; } crate::ptr::read_unaligned(&r as *const [f64; 8] as *const __m512d) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundepi64_ps<const ROUNDING: i32>(a: __m512i) -> __m256 {
+    unsafe { let a = crate::ptr::read_unaligned(&a as *const __m512i as *const [i64; 8]); let mut r = [0.0f32; 8]; let mut i = 0; while i < 8 { r[i] = a[i] as i64 as f32; i += 1; } crate::ptr::read_unaligned(&r as *const [f32; 8] as *const __m256) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundepu32_ps<const ROUNDING: i32>(a: __m512i) -> __m512 {
+    unsafe { let a = crate::ptr::read_unaligned(&a as *const __m512i as *const [u32; 16]); let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = a[i] as u32 as f32; i += 1; } crate::ptr::read_unaligned(&r as *const [f32; 16] as *const __m512) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundepu64_pd<const ROUNDING: i32>(a: __m512i) -> __m512d {
+    unsafe { let a = crate::ptr::read_unaligned(&a as *const __m512i as *const [u64; 8]); let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[i] as u64 as f64; i += 1; } crate::ptr::read_unaligned(&r as *const [f64; 8] as *const __m512d) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundepu64_ps<const ROUNDING: i32>(a: __m512i) -> __m256 {
+    unsafe { let a = crate::ptr::read_unaligned(&a as *const __m512i as *const [u64; 8]); let mut r = [0.0f32; 8]; let mut i = 0; while i < 8 { r[i] = a[i] as u64 as f32; i += 1; } crate::ptr::read_unaligned(&r as *const [f32; 8] as *const __m256) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundpd_epi32<const ROUNDING: i32>(a: __m512d) -> __m256i {
+    let a = a.0; let mut r = [0i32; 8]; let mut i = 0; while i < 8 { r[i] = fcvt_f64_i32(a[i], false, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m256i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundpd_epi64<const ROUNDING: i32>(a: __m512d) -> __m512i {
+    let a = a.0; let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = fcvt_f64_i64(a[i], false, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundpd_epu32<const ROUNDING: i32>(a: __m512d) -> __m256i {
+    let a = a.0; let mut r = [0u32; 8]; let mut i = 0; while i < 8 { r[i] = fcvt_f64_u32(a[i], false, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m256i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundpd_epu64<const ROUNDING: i32>(a: __m512d) -> __m512i {
+    let a = a.0; let mut r = [0u64; 8]; let mut i = 0; while i < 8 { r[i] = fcvt_f64_u64(a[i], false, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundpd_ps<const ROUNDING: i32>(a: __m512d) -> __m256 {
+    let a = a.0; let mut r = [0.0f32; 8]; let mut i = 0; while i < 8 { r[i] = a[i] as f32; i += 1; } __m256(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundps_epi32<const ROUNDING: i32>(a: __m512) -> __m512i {
+    let a = a.0; let mut r = [0i32; 16]; let mut i = 0; while i < 16 { r[i] = fcvt_f32_i32(a[i], false, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundps_epi64<const ROUNDING: i32>(a: __m256) -> __m512i {
+    let a = a.0; let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = fcvt_f32_i64(a[i], false, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundps_epu32<const ROUNDING: i32>(a: __m512) -> __m512i {
+    let a = a.0; let mut r = [0u32; 16]; let mut i = 0; while i < 16 { r[i] = fcvt_f32_u32(a[i], false, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundps_epu64<const ROUNDING: i32>(a: __m256) -> __m512i {
+    let a = a.0; let mut r = [0u64; 8]; let mut i = 0; while i < 8 { r[i] = fcvt_f32_u64(a[i], false, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvt_roundps_pd<const ROUNDING: i32>(a: __m256) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[i] as f64; i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepi16_epi64(a: __m128i) -> __m512i {
+    unsafe { let a = crate::ptr::read_unaligned(&a as *const __m128i as *const [i16; 8]); let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = a[i] as i64; i += 1; } from512_i64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_cvtepi16_epi8(a: __m512i) -> __m256i {
+    unsafe { i_join(_mm256_cvtepi16_epi8(i512_lo(&a)), _mm256_cvtepi16_epi8(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepi32_epi16(a: __m512i) -> __m256i {
+    unsafe { i_join(_mm256_cvtepi32_epi16(i512_lo(&a)), _mm256_cvtepi32_epi16(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepi32_epi64(a: __m256i) -> __m512i {
+    unsafe { i512_join(_mm256_cvtepi32_epi64(i_lo(&a)), _mm256_cvtepi32_epi64(i_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepi32_epi8(a: __m512i) -> __m128i {
+    unsafe { let a = lanes512_i32(a); let mut r = [0i8; 16]; let mut i = 0; while i < 16 { r[i] = a[i] as i8; i += 1; } crate::ptr::read_unaligned(&r as *const [i8; 16] as *const __m128i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepi32_pd(a: __m256i) -> __m512d {
+    unsafe { pd512_join(_mm256_cvtepi32_pd(i_lo(&a)), _mm256_cvtepi32_pd(i_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepi32lo_pd(a: __m512i) -> __m512d {
+    unsafe { let b = lanes512_i32(a); let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = b[i] as f64; i += 1; } __m512d(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepi64_epi16(a: __m512i) -> __m128i {
+    unsafe { let a = lanes512_i64(a); let mut r = [0i16; 8]; let mut i = 0; while i < 8 { r[i] = a[i] as i16; i += 1; } crate::ptr::read_unaligned(&r as *const [i16; 8] as *const __m128i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepi64_epi32(a: __m512i) -> __m256i {
+    unsafe { i_join(_mm256_cvtepi64_epi32(i512_lo(&a)), _mm256_cvtepi64_epi32(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepi64_pd(a: __m512i) -> __m512d {
+    unsafe { pd512_join(_mm256_cvtepi64_pd(i512_lo(&a)), _mm256_cvtepi64_pd(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepi64_ps(a: __m512i) -> __m256 {
+    unsafe { ps_join(_mm256_cvtepi64_ps(i512_lo(&a)), _mm256_cvtepi64_ps(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_cvtepi8_epi16(a: __m256i) -> __m512i {
+    unsafe { i512_join(_mm256_cvtepi8_epi16(i_lo(&a)), _mm256_cvtepi8_epi16(i_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepi8_epi64(a: __m128i) -> __m512i {
+    unsafe { let a = crate::ptr::read_unaligned(&a as *const __m128i as *const [i8; 8]); let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = a[i] as i64; i += 1; } from512_i64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepu16_epi64(a: __m128i) -> __m512i {
+    unsafe { let a = crate::ptr::read_unaligned(&a as *const __m128i as *const [u16; 8]); let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = a[i] as i64; i += 1; } from512_i64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepu32_epi64(a: __m256i) -> __m512i {
+    unsafe { i512_join(_mm256_cvtepu32_epi64(i_lo(&a)), _mm256_cvtepu32_epi64(i_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepu32_pd(a: __m256i) -> __m512d {
+    unsafe { pd512_join(_mm256_cvtepu32_pd(i_lo(&a)), _mm256_cvtepu32_pd(i_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepu32_ps(a: __m512i) -> __m512 {
+    unsafe { let a = crate::ptr::read_unaligned(&a as *const __m512i as *const [u32; 16]); let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = a[i] as u32 as f32; i += 1; } crate::ptr::read_unaligned(&r as *const [f32; 16] as *const __m512) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepu32lo_pd(a: __m512i) -> __m512d {
+    unsafe { let b = lanes512_u32(a); let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = b[i] as f64; i += 1; } __m512d(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepu64_pd(a: __m512i) -> __m512d {
+    unsafe { pd512_join(_mm256_cvtepu64_pd(i512_lo(&a)), _mm256_cvtepu64_pd(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepu64_ps(a: __m512i) -> __m256 {
+    unsafe { ps_join(_mm256_cvtepu64_ps(i512_lo(&a)), _mm256_cvtepu64_ps(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_cvtepu8_epi16(a: __m256i) -> __m512i {
+    unsafe { i512_join(_mm256_cvtepu8_epi16(i_lo(&a)), _mm256_cvtepu8_epi16(i_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepu8_epi64(a: __m128i) -> __m512i {
+    unsafe { let a = crate::ptr::read_unaligned(&a as *const __m128i as *const [u8; 8]); let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = a[i] as i64; i += 1; } from512_i64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtpd_epi32(a: __m512d) -> __m256i {
+    unsafe { i_join(_mm256_cvtpd_epi32(pd512_lo(&a)), _mm256_cvtpd_epi32(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtpd_epi64(a: __m512d) -> __m512i {
+    unsafe { i512_join(_mm256_cvtpd_epi64(pd512_lo(&a)), _mm256_cvtpd_epi64(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtpd_epu32(a: __m512d) -> __m256i {
+    unsafe { i_join(_mm256_cvtpd_epu32(pd512_lo(&a)), _mm256_cvtpd_epu32(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtpd_epu64(a: __m512d) -> __m512i {
+    unsafe { i512_join(_mm256_cvtpd_epu64(pd512_lo(&a)), _mm256_cvtpd_epu64(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtpd_pslo(a: __m512d) -> __m512 {
+    let a = a.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 8 { r[i] = a[i] as f32; i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtps_epi32(a: __m512) -> __m512i {
+    unsafe { i512_join(_mm256_cvtps_epi32(ps512_lo(&a)), _mm256_cvtps_epi32(ps512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtps_epi64(a: __m256) -> __m512i {
+    unsafe { i512_join(_mm256_cvtps_epi64(ps_lo(&a)), _mm256_cvtps_epi64(ps_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtps_epu32(a: __m512) -> __m512i {
+    unsafe { i512_join(_mm256_cvtps_epu32(ps512_lo(&a)), _mm256_cvtps_epu32(ps512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtps_epu64(a: __m256) -> __m512i {
+    unsafe { i512_join(_mm256_cvtps_epu64(ps_lo(&a)), _mm256_cvtps_epu64(ps_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtps_pd(a: __m256) -> __m512d {
+    unsafe { pd512_join(_mm256_cvtps_pd(ps_lo(&a)), _mm256_cvtps_pd(ps_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtpslo_pd(a: __m256) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[i] as f64; i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtsd_f64(a: __m512d) -> f64 {
+    a.0[0]
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_cvtsepi16_epi8(a: __m512i) -> __m256i {
+    unsafe { i_join(_mm256_cvtsepi16_epi8(i512_lo(&a)), _mm256_cvtsepi16_epi8(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtsepi32_epi16(a: __m512i) -> __m256i {
+    unsafe { i_join(_mm256_cvtsepi32_epi16(i512_lo(&a)), _mm256_cvtsepi32_epi16(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtsepi32_epi8(a: __m512i) -> __m128i {
+    unsafe { let a = lanes512_i32(a); let mut r = [0i8; 16]; let mut i = 0; while i < 16 { r[i] = a[i].clamp(i8::MIN as i32, i8::MAX as i32) as i8; i += 1; } crate::ptr::read_unaligned(&r as *const [i8; 16] as *const __m128i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtsepi64_epi16(a: __m512i) -> __m128i {
+    unsafe { let a = lanes512_i64(a); let mut r = [0i16; 8]; let mut i = 0; while i < 8 { r[i] = a[i].clamp(i16::MIN as i64, i16::MAX as i64) as i16; i += 1; } crate::ptr::read_unaligned(&r as *const [i16; 8] as *const __m128i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtsepi64_epi32(a: __m512i) -> __m256i {
+    unsafe { i_join(_mm256_cvtsepi64_epi32(i512_lo(&a)), _mm256_cvtsepi64_epi32(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtsi512_si32(a: __m512i) -> i32 {
+    unsafe { lanes512_i32(a)[0] }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtss_f32(a: __m512) -> f32 {
+    a.0[0]
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtt_roundpd_epi32<const ROUNDING: i32>(a: __m512d) -> __m256i {
+    let a = a.0; let mut r = [0i32; 8]; let mut i = 0; while i < 8 { r[i] = fcvt_f64_i32(a[i], true, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m256i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtt_roundpd_epi64<const ROUNDING: i32>(a: __m512d) -> __m512i {
+    let a = a.0; let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = fcvt_f64_i64(a[i], true, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtt_roundpd_epu32<const ROUNDING: i32>(a: __m512d) -> __m256i {
+    let a = a.0; let mut r = [0u32; 8]; let mut i = 0; while i < 8 { r[i] = fcvt_f64_u32(a[i], true, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m256i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtt_roundpd_epu64<const ROUNDING: i32>(a: __m512d) -> __m512i {
+    let a = a.0; let mut r = [0u64; 8]; let mut i = 0; while i < 8 { r[i] = fcvt_f64_u64(a[i], true, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtt_roundps_epi32<const ROUNDING: i32>(a: __m512) -> __m512i {
+    let a = a.0; let mut r = [0i32; 16]; let mut i = 0; while i < 16 { r[i] = fcvt_f32_i32(a[i], true, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtt_roundps_epi64<const ROUNDING: i32>(a: __m256) -> __m512i {
+    let a = a.0; let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = fcvt_f32_i64(a[i], true, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtt_roundps_epu32<const ROUNDING: i32>(a: __m512) -> __m512i {
+    let a = a.0; let mut r = [0u32; 16]; let mut i = 0; while i < 16 { r[i] = fcvt_f32_u32(a[i], true, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtt_roundps_epu64<const ROUNDING: i32>(a: __m256) -> __m512i {
+    let a = a.0; let mut r = [0u64; 8]; let mut i = 0; while i < 8 { r[i] = fcvt_f32_u64(a[i], true, ROUNDING); i += 1; } unsafe { crate::ptr::read_unaligned(r.as_ptr() as *const __m512i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvttpd_epi32(a: __m512d) -> __m256i {
+    unsafe { i_join(_mm256_cvttpd_epi32(pd512_lo(&a)), _mm256_cvttpd_epi32(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvttpd_epi64(a: __m512d) -> __m512i {
+    unsafe { i512_join(_mm256_cvttpd_epi64(pd512_lo(&a)), _mm256_cvttpd_epi64(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvttpd_epu32(a: __m512d) -> __m256i {
+    unsafe { i_join(_mm256_cvttpd_epu32(pd512_lo(&a)), _mm256_cvttpd_epu32(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvttpd_epu64(a: __m512d) -> __m512i {
+    unsafe { i512_join(_mm256_cvttpd_epu64(pd512_lo(&a)), _mm256_cvttpd_epu64(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvttps_epi64(a: __m256) -> __m512i {
+    unsafe { i512_join(_mm256_cvttps_epi64(ps_lo(&a)), _mm256_cvttps_epi64(ps_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvttps_epu32(a: __m512) -> __m512i {
+    unsafe { i512_join(_mm256_cvttps_epu32(ps512_lo(&a)), _mm256_cvttps_epu32(ps512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvttps_epu64(a: __m256) -> __m512i {
+    unsafe { i512_join(_mm256_cvttps_epu64(ps_lo(&a)), _mm256_cvttps_epu64(ps_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtusepi16_epi8(a: __m512i) -> __m256i {
+    unsafe { i_join(_mm256_cvtusepi16_epi8(i512_lo(&a)), _mm256_cvtusepi16_epi8(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtusepi32_epi16(a: __m512i) -> __m256i {
+    unsafe { i_join(_mm256_cvtusepi32_epi16(i512_lo(&a)), _mm256_cvtusepi32_epi16(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtusepi32_epi8(a: __m512i) -> __m128i {
+    unsafe { let a = lanes512_u32(a); let mut r = [0u8; 16]; let mut i = 0; while i < 16 { r[i] = a[i].min(255) as u8; i += 1; } crate::ptr::read_unaligned(r.as_ptr() as *const __m128i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtusepi64_epi16(a: __m512i) -> __m128i {
+    unsafe { let a = lanes512_u64(a); let mut r = [0u16; 8]; let mut i = 0; while i < 8 { r[i] = a[i].min(65535) as u16; i += 1; } crate::ptr::read_unaligned(r.as_ptr() as *const __m128i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtusepi64_epi32(a: __m512i) -> __m256i {
+    unsafe { i_join(_mm256_cvtusepi64_epi32(i512_lo(&a)), _mm256_cvtusepi64_epi32(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_div_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[i] / b[i]; i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_div_round_ps<const ROUNDING: i32>(a: __m512, b: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = a[i] / b[i]; i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_extractf32x4_ps<const IMM8: i32>(a: __m512) -> __m128 {
+    let a = a.0; let mut r = [0.0f32; 4]; let mut i = 0; while i < 4 { r[i] = a[(IMM8 as usize) * 4 + i]; i += 1; } __m128(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_extractf64x2_pd<const IMM8: i32>(a: __m512d) -> __m128d {
+    let a = a.0; let mut r = [0.0f64; 2]; let mut i = 0; while i < 2 { r[i] = a[(IMM8 as usize) * 2 + i]; i += 1; } __m128d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_extractf64x4_pd<const IMM1: i32>(a: __m512d) -> __m256d {
+    let a = a.0; let mut r = [0.0f64; 4]; let mut i = 0; while i < 4 { r[i] = a[(IMM1 as usize) * 4 + i]; i += 1; } __m256d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_extracti32x8_epi32<const IMM8: i32>(a: __m512i) -> __m256i {
+    unsafe { let a = lanes512_i32(a); let mut r = [0i32; 8]; let mut i = 0; while i < 8 { r[i] = a[(IMM8 as usize) * 8 + i]; i += 1; } crate::ptr::read_unaligned(r.as_ptr() as *const __m256i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_extracti64x2_epi64<const IMM8: i32>(a: __m512i) -> __m128i {
+    unsafe { let a = lanes512_i64(a); let mut r = [0i64; 2]; let mut i = 0; while i < 2 { r[i] = a[(IMM8 as usize) * 2 + i]; i += 1; } crate::ptr::read_unaligned(r.as_ptr() as *const __m128i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_extracti64x4_epi64<const IMM1: i32>(a: __m512i) -> __m256i {
+    unsafe { let a = lanes512_i64(a); let mut r = [0i64; 4]; let mut i = 0; while i < 4 { r[i] = a[(IMM1 as usize) * 4 + i]; i += 1; } crate::ptr::read_unaligned(r.as_ptr() as *const __m256i) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fixupimm_pd<const IMM8: i32>(a: __m512d, b: __m512d, c: __m512i) -> __m512d {
+    unsafe { pd512_join(_mm256_fixupimm_pd::<IMM8>(pd512_lo(&a), pd512_lo(&b), i512_lo(&c)), _mm256_fixupimm_pd::<IMM8>(pd512_hi(&a), pd512_hi(&b), i512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fixupimm_ps<const IMM8: i32>(a: __m512, b: __m512, c: __m512i) -> __m512 {
+    unsafe { ps512_join(_mm256_fixupimm_ps::<IMM8>(ps512_lo(&a), ps512_lo(&b), i512_lo(&c)), _mm256_fixupimm_ps::<IMM8>(ps512_hi(&a), ps512_hi(&b), i512_hi(&c))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fixupimm_round_pd<const IMM8: i32, const ROUNDING: i32>(a: __m512d, b: __m512d, c: __m512i) -> __m512d {
+    unsafe { let a = a.0; let b = b.0; let c = lanes512_i32(c); let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { let tok = (c[i*2] as u32 >> (fixup_idx_f64(b[i])*4)) as u32; r[i] = fixup_apply_f64(a[i], b[i], tok); i += 1; } __m512d(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fixupimm_round_ps<const IMM8: i32, const ROUNDING: i32>(a: __m512, b: __m512, c: __m512i) -> __m512 {
+    unsafe { let a = a.0; let b = b.0; let c = lanes512_i32(c); let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { let tok = (c[i] as u32 >> (fixup_idx_f32(b[i])*4)) as u32; r[i] = fixup_apply_f32(a[i], b[i], tok); i += 1; } __m512(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmadd_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d, c: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let c = c.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = x86_fma_f64(a[i], b[i], c[i]); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmadd_round_ps<const ROUNDING: i32>(a: __m512, b: __m512, c: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let c = c.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = x86_fma_f32(a[i], b[i], c[i]); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmaddsub_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d, c: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let c = c.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = x86_fmaddsub_f64(a[i], b[i], c[i], i); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmaddsub_round_ps<const ROUNDING: i32>(a: __m512, b: __m512, c: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let c = c.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = x86_fmaddsub_f32(a[i], b[i], c[i], i); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmsub_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d, c: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let c = c.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = x86_fmsub_f64(a[i], b[i], c[i]); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmsub_round_ps<const ROUNDING: i32>(a: __m512, b: __m512, c: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let c = c.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = x86_fmsub_f32(a[i], b[i], c[i]); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmsubadd_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d, c: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let c = c.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = x86_fmsubadd_f64(a[i], b[i], c[i], i); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fmsubadd_round_ps<const ROUNDING: i32>(a: __m512, b: __m512, c: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let c = c.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = x86_fmsubadd_f32(a[i], b[i], c[i], i); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fnmadd_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d, c: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let c = c.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = x86_fnmadd_f64(a[i], b[i], c[i]); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fnmadd_round_ps<const ROUNDING: i32>(a: __m512, b: __m512, c: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let c = c.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = x86_fnmadd_f32(a[i], b[i], c[i]); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fnmsub_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d, c: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let c = c.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = x86_fnmsub_f64(a[i], b[i], c[i]); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_fnmsub_round_ps<const ROUNDING: i32>(a: __m512, b: __m512, c: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let c = c.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = x86_fnmsub_f32(a[i], b[i], c[i]); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_getexp_round_pd<const ROUNDING: i32>(a: __m512d) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = getexp_f64(a[i]); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_getexp_round_ps<const ROUNDING: i32>(a: __m512) -> __m512 {
+    let a = a.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = getexp_f32(a[i]); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_getmant_round_pd<const NORM: i32, const SIGN: i32, const ROUNDING: i32>(a: __m512d) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = getmant_f64(a[i], NORM, SIGN); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_getmant_round_ps<const NORM: i32, const SIGN: i32, const ROUNDING: i32>(a: __m512) -> __m512 {
+    let a = a.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = getmant_f32(a[i], NORM, SIGN); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i32logather_epi64<const SCALE: i32>(vindex: __m512i, base_addr: *const i64) -> __m512i {
+    unsafe { let idx = lanes512_u32(vindex); let mut r = [0u64; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i32 as i64) * (SCALE as i64)) as isize) as *const i64) as u64; i += 1; } from512_u64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i32logather_pd<const SCALE: i32>(vindex: __m512i, base_addr: *const f64) -> __m512d {
+    unsafe { let idx = lanes512_u32(vindex); let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i32 as i64) * (SCALE as i64)) as isize) as *const f64); i += 1; } __m512d(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i32loscatter_epi64<const SCALE: i32>(base_addr: *mut i64, vindex: __m512i, a: __m512i) {
+    unsafe { let idx = lanes512_u32(vindex); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i32 as i64) * (SCALE as i64)) as isize) as *mut i64, lanes512_u64(a)[i] as i64); i += 1; } }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_i32loscatter_pd<const SCALE: i32>(base_addr: *mut f64, vindex: __m512i, a: __m512d) {
+    unsafe { let idx = lanes512_u32(vindex); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i32 as i64) * (SCALE as i64)) as isize) as *mut f64, a.0[i]); i += 1; } }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_int2mask(a: i32) -> __mmask16 {
+    a as __mmask16
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_kand(a: __mmask16, b: __mmask16) -> __mmask16 {
+    a&b
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_kandn(a: __mmask16, b: __mmask16) -> __mmask16 {
+    !a&b
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_knot(a: __mmask16) -> __mmask16 {
+    !a
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_kor(a: __mmask16, b: __mmask16) -> __mmask16 {
+    a|b
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_kortestc(a: __mmask16, b: __mmask16) -> i32 {
+    if (a|b)==!0 {1} else {0}
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_kortestz(a: __mmask16, b: __mmask16) -> i32 {
+    if (a|b)==0 {1} else {0}
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_kunpackb(a: __mmask16, b: __mmask16) -> __mmask16 {
+    (((a as u64) << 8) | ((b as u64) & ((1u64 << 8) - 1))) as __mmask16
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_kunpackd(a: __mmask64, b: __mmask64) -> __mmask64 {
+    (((a as u64) << 32) | ((b as u64) & ((1u64 << 32) - 1))) as __mmask64
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_kunpackw(a: __mmask32, b: __mmask32) -> __mmask32 {
+    (((a as u64) << 16) | ((b as u64) & ((1u64 << 16) - 1))) as __mmask32
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_kxnor(a: __mmask16, b: __mmask16) -> __mmask16 {
+    !(a^b)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_kxor(a: __mmask16, b: __mmask16) -> __mmask16 {
+    a^b
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_movedup_pd(a: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_movedup_pd(pd512_lo(&a)), _mm256_movedup_pd(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_movehdup_ps(a: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_movehdup_ps(ps512_lo(&a)), _mm256_movehdup_ps(ps512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_moveldup_ps(a: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_moveldup_ps(ps512_lo(&a)), _mm256_moveldup_ps(ps512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_mul_epi32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_mul_epi32(i512_lo(&a), i512_lo(&b)), _mm256_mul_epi32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_mul_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[i] * b[i]; i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_mul_round_ps<const ROUNDING: i32>(a: __m512, b: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = a[i] * b[i]; i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_mulhi_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_mulhi_epi16(i512_lo(&a), i512_lo(&b)), _mm256_mulhi_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_mulhi_epu16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_mulhi_epu16(i512_lo(&a), i512_lo(&b)), _mm256_mulhi_epu16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_mulhrs_epi16(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_mulhrs_epi16(i512_lo(&a), i512_lo(&b)), _mm256_mulhrs_epi16(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_mullox_epi64(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { let a = lanes512_i64(a); let b = lanes512_i64(b); let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = (a[i] as i64).wrapping_mul(b[i] as i64); i += 1; } from512_i64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_permute_pd<const MASK: i32>(a: __m512d) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[((i / 2) * 2) + (((MASK as usize) >> i) & 1)]; i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_permutevar_ps(a: __m512, idx: __m512i) -> __m512 {
+    let a = a.0; unsafe { let idx = lanes512_i32(idx); let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { let s = (idx[i] as usize) & 3; r[i] = a[(i & !3) + s]; i += 1; } __m512(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
+pub fn _mm512_range_pd<const IMM8: i32>(a: __m512d, b: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_range_pd::<IMM8>(pd512_lo(&a), pd512_lo(&b)), _mm256_range_pd::<IMM8>(pd512_hi(&a), pd512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
+pub fn _mm512_range_ps<const IMM8: i32>(a: __m512, b: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_range_ps::<IMM8>(ps512_lo(&a), ps512_lo(&b)), _mm256_range_ps::<IMM8>(ps512_hi(&a), ps512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
+pub fn _mm512_range_round_pd<const IMM8: i32, const ROUNDING: i32>(a: __m512d, b: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = range_apply_f64(a[i], b[i], IMM8 as u32); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
+pub fn _mm512_range_round_ps<const IMM8: i32, const ROUNDING: i32>(a: __m512, b: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = range_apply_f32(a[i], b[i], IMM8 as u32); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_rcp14_pd(a: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_rcp14_pd(pd512_lo(&a)), _mm256_rcp14_pd(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_rcp14_ps(a: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_rcp14_ps(ps512_lo(&a)), _mm256_rcp14_ps(ps512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_rsqrt14_pd(a: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_rsqrt14_pd(pd512_lo(&a)), _mm256_rsqrt14_pd(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_rsqrt14_ps(a: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_rsqrt14_ps(ps512_lo(&a)), _mm256_rsqrt14_ps(ps512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_scalef_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = scalef_f64(a[i], b[i]); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_scalef_round_ps<const ROUNDING: i32>(a: __m512, b: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = scalef_f32(a[i], b[i]); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_set4_epi32(a: i32, b: i32, c: i32, d: i32) -> __m512i {
+    unsafe { from512_i32([d,c,b,a,d,c,b,a,d,c,b,a,d,c,b,a]) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_set4_epi64(a: i64, b: i64, c: i64, d: i64) -> __m512i {
+    unsafe { from512_i64([d,c,b,a,d,c,b,a]) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_set4_pd(a: f64, b: f64, c: f64, d: f64) -> __m512d {
+    __m512d([d,c,b,a,d,c,b,a])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_set4_ps(a: f32, b: f32, c: f32, d: f32) -> __m512 {
+    __m512([d,c,b,a,d,c,b,a,d,c,b,a,d,c,b,a])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_setr4_epi32(a: i32, b: i32, c: i32, d: i32) -> __m512i {
+    unsafe { from512_i32([a,b,c,d,a,b,c,d,a,b,c,d,a,b,c,d]) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_setr4_epi64(a: i64, b: i64, c: i64, d: i64) -> __m512i {
+    unsafe { from512_i64([a,b,c,d,a,b,c,d]) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_setr4_pd(a: f64, b: f64, c: f64, d: f64) -> __m512d {
+    __m512d([a,b,c,d,a,b,c,d])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_setr4_ps(a: f32, b: f32, c: f32, d: f32) -> __m512 {
+    __m512([a,b,c,d,a,b,c,d,a,b,c,d,a,b,c,d])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_setzero() -> __m512i {
+    __m512i([0; 8])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_setzero_epi32() -> __m512i {
+    __m512i([0; 8])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_shufflehi_epi16<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_shufflehi_epi16::<IMM8>(i512_lo(&a)), _mm256_shufflehi_epi16::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_shufflelo_epi16<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_shufflelo_epi16::<IMM8>(i512_lo(&a)), _mm256_shufflelo_epi16::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sqrt_pd(a: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_sqrt_pd(pd512_lo(&a)), _mm256_sqrt_pd(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sqrt_ps(a: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_sqrt_ps(ps512_lo(&a)), _mm256_sqrt_ps(ps512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sqrt_round_pd<const ROUNDING: i32>(a: __m512d) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[i].sqrt(); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sqrt_round_ps<const ROUNDING: i32>(a: __m512) -> __m512 {
+    let a = a.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = a[i].sqrt(); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_stream_load_si512(mem_addr: *const __m512i) -> __m512i {
+    unsafe { crate::ptr::read_unaligned(mem_addr) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sub_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[i] - b[i]; i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_sub_round_ps<const ROUNDING: i32>(a: __m512, b: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = a[i] - b[i]; i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_undefined() -> __m512i {
+    from512_i64([0;8])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_undefined_epi32() -> __m512i {
+    from512_i64([0;8])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_undefined_pd() -> __m512d {
+    __m512d([0.0f64;8])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_undefined_ps() -> __m512 {
+    __m512([0.0f32;16])
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_zextpd128_pd512(a: __m128d) -> __m512d {
+    unsafe { let mut r = __m512d([0.0f64;8]); crate::ptr::write_unaligned(&mut r as *mut __m512d as *mut __m128d, a); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_zextpd256_pd512(a: __m256d) -> __m512d {
+    unsafe { let mut r = __m512d([0.0f64;8]); crate::ptr::write_unaligned(&mut r as *mut __m512d as *mut __m256d, a); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_zextps128_ps512(a: __m128) -> __m512 {
+    unsafe { let mut r = __m512([0.0f32;16]); crate::ptr::write_unaligned(&mut r as *mut __m512 as *mut __m128, a); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_zextps256_ps512(a: __m256) -> __m512 {
+    unsafe { let mut r = __m512([0.0f32;16]); crate::ptr::write_unaligned(&mut r as *mut __m512 as *mut __m256, a); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_zextsi128_si512(a: __m128i) -> __m512i {
+    unsafe { let mut r = from512_i64([0;8]); crate::ptr::write_unaligned(&mut r as *mut __m512i as *mut __m128i, a); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_zextsi256_si512(a: __m256i) -> __m512i {
+    unsafe { let mut r = from512_i64([0;8]); crate::ptr::write_unaligned(&mut r as *mut __m512i as *mut __m256i, a); r }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtepi64_epi8(a: __m512i) -> __m128i {
+    unsafe { let a = lanes512_i64(a); let mut r = [0i8; 16]; let mut i = 0; while i < 8 { r[i] = a[i] as i8; i += 1; } from128_i8(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtsepi64_epi8(a: __m512i) -> __m128i {
+    unsafe { let a = lanes512_i64(a); let mut r = [0i8; 16]; let mut i = 0; while i < 8 { r[i] = a[i].clamp(i8::MIN as i64, i8::MAX as i64) as i8; i += 1; } from128_i8(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtusepi64_epi8(a: __m512i) -> __m128i {
+    unsafe { let a = lanes512_u64(a); let mut r = [0u8; 16]; let mut i = 0; while i < 8 { r[i] = a[i].min(u8::MAX as u64) as u8; i += 1; } from128_u8(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_max_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = f1_max_f64(a[i], b[i]); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_max_round_ps<const ROUNDING: i32>(a: __m512, b: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = f1_max_f32(a[i], b[i]); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_min_round_pd<const ROUNDING: i32>(a: __m512d, b: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = f1_min_f64(a[i], b[i]); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_min_round_ps<const ROUNDING: i32>(a: __m512, b: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = f1_min_f32(a[i], b[i]); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
+pub fn _mm512_reduce_pd<const IMM8: i32>(a: __m512d) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = f1_reduce_f64(a[i], IMM8); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
+pub fn _mm512_reduce_ps<const IMM8: i32>(a: __m512) -> __m512 {
+    let a = a.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = f1_reduce_f32(a[i], IMM8); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
+pub fn _mm512_reduce_round_pd<const IMM8: i32, const ROUNDING: i32>(a: __m512d) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = f1_reduce_f64(a[i], IMM8); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
+pub fn _mm512_reduce_round_ps<const IMM8: i32, const ROUNDING: i32>(a: __m512) -> __m512 {
+    let a = a.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = f1_reduce_f32(a[i], IMM8); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_roundscale_pd<const IMM8: i32>(a: __m512d) -> __m512d {
+    unsafe { pd512_join(_mm256_roundscale_pd::<IMM8>(pd512_lo(&a)), _mm256_roundscale_pd::<IMM8>(pd512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_roundscale_ps<const IMM8: i32>(a: __m512) -> __m512 {
+    unsafe { ps512_join(_mm256_roundscale_ps::<IMM8>(ps512_lo(&a)), _mm256_roundscale_ps::<IMM8>(ps512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_roundscale_round_pd<const IMM8: i32, const ROUNDING: i32>(a: __m512d) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = f1_rscale_f64(a[i], IMM8); i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_roundscale_round_ps<const IMM8: i32, const ROUNDING: i32>(a: __m512) -> __m512 {
+    let a = a.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = f1_rscale_f32(a[i], IMM8); i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_alignr_epi32<const IMM8: i32>(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { let a = lanes512_i32(a); let b = lanes512_i32(b); let mut r = [0i32; 16]; let cnt = (IMM8 as usize) & 15; let mut i = 0; while i < 16 { let idx = i + cnt; r[i] = if idx < 16 { b[idx] } else { a[idx - 16] }; i += 1; } from512_i32(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_alignr_epi64<const IMM8: i32>(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { let a = lanes512_i64(a); let b = lanes512_i64(b); let mut r = [0i64; 8]; let cnt = (IMM8 as usize) & 7; let mut i = 0; while i < 8 { let idx = i + cnt; r[i] = if idx < 8 { b[idx] } else { a[idx - 8] }; i += 1; } from512_i64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_broadcastmb_epi64(k: __mmask8) -> __m512i {
+    unsafe { from512_i64([k as i64; 8]) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512cd"))]
+pub fn _mm512_broadcastmw_epi32(k: __mmask16) -> __m512i {
+    unsafe { from512_i32([k as i32; 16]) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
+pub fn _mm512_bslli_epi128<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_bslli_epi128::<IMM8>(i512_lo(&a)), _mm256_bslli_epi128::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
+pub fn _mm512_bsrli_epi128<const IMM8: i32>(a: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_bsrli_epi128::<IMM8>(i512_lo(&a)), _mm256_bsrli_epi128::<IMM8>(i512_hi(&a))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_mul_epu32(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_mul_epu32(i512_lo(&a), i512_lo(&b)), _mm256_mul_epu32(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_permute_ps<const MASK: i32>(a: __m512) -> __m512 {
+    let a = a.0; let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { let grp = (i / 4) * 4; r[i] = a[grp + (((MASK as usize) >> ((i & 3)*2)) & 3)]; i += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_permutevar_epi32(idx: __m512i, a: __m512i) -> __m512i {
+    unsafe { let a = lanes512_i32(a); let idx = lanes512_i32(idx); let mut r = [0i32; 16]; let mut i = 0; while i < 16 { r[i] = a[(idx[i] as usize) & 15]; i += 1; } from512_i32(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_permutevar_pd(a: __m512d, idx: __m512i) -> __m512d {
+    let a = a.0; unsafe { let idx = lanes512_i64(idx); let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { let s = (((idx[i] as u64) >> 1u64) & 1) as usize; r[i] = a[(i & !1) + s]; i += 1; } __m512d(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_permutex_epi64<const MASK: i32>(a: __m512i) -> __m512i {
+    unsafe { let a = lanes512_i64(a); let mut r = [0i64; 8]; let mut i = 0; while i < 8 { r[i] = a[(i & 4) | (((MASK as usize) >> ((i & 3)*2)) & 3)]; i += 1; } from512_i64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_permutex_pd<const MASK: i32>(a: __m512d) -> __m512d {
+    let a = a.0; let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = a[(i & 4) | (((MASK as usize) >> ((i & 3)*2)) & 3)]; i += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_shuffle_f32x4<const IMM8: i32>(a: __m512, b: __m512) -> __m512 {
+    let a = a.0; let b = b.0; let mut r = [0.0f32; 16]; let mut l = 0; while l < 4 { let sel = ((IMM8 as usize) >> (l*2)) & 3; let mut j = 0; while j < 4 { r[l*4+j] = (if l < 2 { &a } else { &b })[sel*4+j]; j += 1; } l += 1; } __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_shuffle_f64x2<const IMM8: i32>(a: __m512d, b: __m512d) -> __m512d {
+    let a = a.0; let b = b.0; let mut r = [0.0f64; 8]; let mut l = 0; while l < 4 { let sel = ((IMM8 as usize) >> (l*2)) & 3; let mut j = 0; while j < 2 { r[l*2+j] = (if l < 2 { &a } else { &b })[sel*2+j]; j += 1; } l += 1; } __m512d(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_shuffle_i64x2<const IMM8: i32>(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { let a = lanes512_i64(a); let b = lanes512_i64(b); let mut r = [0i64; 8]; let mut l = 0; while l < 4 { let sel = ((IMM8 as usize) >> (l*2)) & 3; let mut j = 0; while j < 2 { r[l*2+j] = (if l < 2 { &a } else { &b })[sel*2+j]; j += 1; } l += 1; } from512_i64(r) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
+pub fn _mm512_dbsad_epu8<const IMM8: i32>(a: __m512i, b: __m512i) -> __m512i {
+    unsafe { i512_join(_mm256_dbsad_epu8::<IMM8>(i512_lo(&a), i512_lo(&b)), _mm256_dbsad_epu8::<IMM8>(i512_hi(&a), i512_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
+pub fn _mm512_cvtpd_ps(a: __m512d) -> __m256 {
+    unsafe { ps_join(_mm256_cvtpd_ps(pd512_lo(&a)), _mm256_cvtpd_ps(pd512_hi(&a))) }
 }
