@@ -1114,7 +1114,7 @@ pub const _MM_HINT_ET1: i32 = 6;
 #[inline]
 #[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "sse"))]
 #[rustc_legacy_const_generics(1)]
-pub fn _mm_prefetch<const STRATEGY: i32>(_p: *const i8) {}
+pub unsafe fn _mm_prefetch<const STRATEGY: i32>(_p: *const i8) {}
 #[inline]
 #[cfg_attr(any(target_arch = "x86", target_arch = "x86_64"), target_feature(enable = "avx2"))]
 #[rustc_legacy_const_generics(1)]
@@ -24625,85 +24625,85 @@ pub fn _mm256_getmant_ps<const NORM: i32, const SIGN: i32>(a: __m256) -> __m256 
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_i32gather_epi32<const SCALE: i32>(slice: *const i32, offsets: __m256i) -> __m256i {
+pub unsafe fn _mm256_i32gather_epi32<const SCALE: i32>(slice: *const i32, offsets: __m256i) -> __m256i {
     unsafe { let idx = lanes256_u32(offsets); let mut r = [0u32; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i32) as u32; i += 1; } from256_u32(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_i32gather_epi64<const SCALE: i32>(slice: *const i64, offsets: __m128i) -> __m256i {
+pub unsafe fn _mm256_i32gather_epi64<const SCALE: i32>(slice: *const i64, offsets: __m128i) -> __m256i {
     unsafe { let idx = lanes128_u32(offsets); let mut r = [0u64; 4]; let mut i = 0; while i < 4 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i64) as u64; i += 1; } from256_u64(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_i32gather_ps<const SCALE: i32>(slice: *const f32, offsets: __m256i) -> __m256 {
+pub unsafe fn _mm256_i32gather_ps<const SCALE: i32>(slice: *const f32, offsets: __m256i) -> __m256 {
     unsafe { let idx = lanes256_u32(offsets); let mut r = [0.0f32; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f32); i += 1; } __m256(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_i32scatter_epi32<const SCALE: i32>(base_addr: *mut i32, vindex: __m256i, a: __m256i) {
+pub unsafe fn _mm256_i32scatter_epi32<const SCALE: i32>(base_addr: *mut i32, vindex: __m256i, a: __m256i) {
     unsafe { let idx = lanes256_u32(vindex); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i32, lanes256_u32(a)[i] as i32); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_i32scatter_epi64<const SCALE: i32>(base_addr: *mut i64, vindex: __m128i, a: __m256i) {
+pub unsafe fn _mm256_i32scatter_epi64<const SCALE: i32>(base_addr: *mut i64, vindex: __m128i, a: __m256i) {
     unsafe { let idx = lanes128_u32(vindex); let mut i = 0; while i < 4 { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i64, lanes256_u64(a)[i] as i64); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_i32scatter_pd<const SCALE: i32>(base_addr: *mut f64, vindex: __m128i, a: __m256d) {
+pub unsafe fn _mm256_i32scatter_pd<const SCALE: i32>(base_addr: *mut f64, vindex: __m128i, a: __m256d) {
     unsafe { let idx = lanes128_u32(vindex); let mut i = 0; while i < 4 { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f64, a.0[i]); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_i32scatter_ps<const SCALE: i32>(base_addr: *mut f32, vindex: __m256i, a: __m256) {
+pub unsafe fn _mm256_i32scatter_ps<const SCALE: i32>(base_addr: *mut f32, vindex: __m256i, a: __m256) {
     unsafe { let idx = lanes256_u32(vindex); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f32, a.0[i]); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_i64gather_epi32<const SCALE: i32>(slice: *const i32, offsets: __m256i) -> __m128i {
+pub unsafe fn _mm256_i64gather_epi32<const SCALE: i32>(slice: *const i32, offsets: __m256i) -> __m128i {
     unsafe { let idx = lanes256_u64(offsets); let mut r = [0u32; 4]; let mut i = 0; while i < 4 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i32) as u32; i += 1; } from128_u32(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_i64gather_epi64<const SCALE: i32>(slice: *const i64, offsets: __m256i) -> __m256i {
+pub unsafe fn _mm256_i64gather_epi64<const SCALE: i32>(slice: *const i64, offsets: __m256i) -> __m256i {
     unsafe { let idx = lanes256_u64(offsets); let mut r = [0u64; 4]; let mut i = 0; while i < 4 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i64) as u64; i += 1; } from256_u64(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_i64gather_ps<const SCALE: i32>(slice: *const f32, offsets: __m256i) -> __m128 {
+pub unsafe fn _mm256_i64gather_ps<const SCALE: i32>(slice: *const f32, offsets: __m256i) -> __m128 {
     unsafe { let idx = lanes256_u64(offsets); let mut r = [0.0f32; 4]; let mut i = 0; while i < 4 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f32); i += 1; } __m128(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_i64scatter_epi32<const SCALE: i32>(base_addr: *mut i32, vindex: __m256i, a: __m128i) {
+pub unsafe fn _mm256_i64scatter_epi32<const SCALE: i32>(base_addr: *mut i32, vindex: __m256i, a: __m128i) {
     unsafe { let idx = lanes256_u64(vindex); let mut i = 0; while i < 4 { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i32, lanes128_u32(a)[i] as i32); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_i64scatter_epi64<const SCALE: i32>(base_addr: *mut i64, vindex: __m256i, a: __m256i) {
+pub unsafe fn _mm256_i64scatter_epi64<const SCALE: i32>(base_addr: *mut i64, vindex: __m256i, a: __m256i) {
     unsafe { let idx = lanes256_u64(vindex); let mut i = 0; while i < 4 { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i64, lanes256_u64(a)[i] as i64); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_i64scatter_pd<const SCALE: i32>(base_addr: *mut f64, vindex: __m256i, a: __m256d) {
+pub unsafe fn _mm256_i64scatter_pd<const SCALE: i32>(base_addr: *mut f64, vindex: __m256i, a: __m256d) {
     unsafe { let idx = lanes256_u64(vindex); let mut i = 0; while i < 4 { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f64, a.0[i]); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_i64scatter_ps<const SCALE: i32>(base_addr: *mut f32, vindex: __m256i, a: __m128) {
+pub unsafe fn _mm256_i64scatter_ps<const SCALE: i32>(base_addr: *mut f32, vindex: __m256i, a: __m128) {
     unsafe { let idx = lanes256_u64(vindex); let mut i = 0; while i < 4 { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f32, a.0[i]); i += 1; } }
 }
 
@@ -24733,37 +24733,37 @@ pub fn _mm256_inserti64x2<const MASK1: i32>(a: __m256i, b: __m128i) -> __m256i {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_load_epi32(mem_addr: *const u8) -> __m256i {
+pub unsafe fn _mm256_load_epi32(mem_addr: *const u8) -> __m256i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m256i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_load_epi64(mem_addr: *const u8) -> __m256i {
+pub unsafe fn _mm256_load_epi64(mem_addr: *const u8) -> __m256i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m256i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_loadu_epi16(mem_addr: *const u8) -> __m256i {
+pub unsafe fn _mm256_loadu_epi16(mem_addr: *const u8) -> __m256i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m256i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_loadu_epi32(mem_addr: *const u8) -> __m256i {
+pub unsafe fn _mm256_loadu_epi32(mem_addr: *const u8) -> __m256i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m256i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_loadu_epi64(mem_addr: *const u8) -> __m256i {
+pub unsafe fn _mm256_loadu_epi64(mem_addr: *const u8) -> __m256i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m256i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_loadu_epi8(mem_addr: *const u8) -> __m256i {
+pub unsafe fn _mm256_loadu_epi8(mem_addr: *const u8) -> __m256i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m256i) }
 }
 
@@ -25033,49 +25033,49 @@ pub fn _mm256_srlv_epi16(a: __m256i, b: __m256i) -> __m256i {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_store_epi32(mem_addr: *mut u8, a: __m256i) -> () {
+pub unsafe fn _mm256_store_epi32(mem_addr: *mut u8, a: __m256i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m256i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_store_epi64(mem_addr: *mut u8, a: __m256i) -> () {
+pub unsafe fn _mm256_store_epi64(mem_addr: *mut u8, a: __m256i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m256i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_store_si256(mem_addr: *mut u8, a: __m256i) -> () {
+pub unsafe fn _mm256_store_si256(mem_addr: *mut u8, a: __m256i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m256i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_storeu_epi16(mem_addr: *mut u8, a: __m256i) -> () {
+pub unsafe fn _mm256_storeu_epi16(mem_addr: *mut u8, a: __m256i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m256i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_storeu_epi64(mem_addr: *mut u8, a: __m256i) -> () {
+pub unsafe fn _mm256_storeu_epi64(mem_addr: *mut u8, a: __m256i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m256i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_storeu_epi8(mem_addr: *mut u8, a: __m256i) -> () {
+pub unsafe fn _mm256_storeu_epi8(mem_addr: *mut u8, a: __m256i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m256i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm256_stream_ps(mem_addr: *mut u8, a: __m256) -> () {
+pub unsafe fn _mm256_stream_ps(mem_addr: *mut u8, a: __m256) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m256, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_stream_si256(mem_addr: *mut u8, a: __m256i) -> () {
+pub unsafe fn _mm256_stream_si256(mem_addr: *mut u8, a: __m256i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m256i, a) }
 }
 
@@ -25219,115 +25219,115 @@ pub fn _mm_getmant_ps<const NORM: i32, const SIGN: i32>(a: __m128) -> __m128 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm_i32gather_epi32<const SCALE: i32>(slice: *const i32, offsets: __m128i) -> __m128i {
+pub unsafe fn _mm_i32gather_epi32<const SCALE: i32>(slice: *const i32, offsets: __m128i) -> __m128i {
     unsafe { let idx = lanes128_u32(offsets); let mut r = [0u32; 4]; let mut i = 0; while i < 4 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i32) as u32; i += 1; } from128_u32(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm_i32gather_epi64<const SCALE: i32>(slice: *const i64, offsets: __m128i) -> __m128i {
+pub unsafe fn _mm_i32gather_epi64<const SCALE: i32>(slice: *const i64, offsets: __m128i) -> __m128i {
     unsafe { let idx = lanes128_u32(offsets); let mut r = [0u64; 2]; let mut i = 0; while i < 2 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i64) as u64; i += 1; } from128_u64(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm_i32gather_ps<const SCALE: i32>(slice: *const f32, offsets: __m128i) -> __m128 {
+pub unsafe fn _mm_i32gather_ps<const SCALE: i32>(slice: *const f32, offsets: __m128i) -> __m128 {
     unsafe { let idx = lanes128_u32(offsets); let mut r = [0.0f32; 4]; let mut i = 0; while i < 4 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f32); i += 1; } __m128(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_i32scatter_epi32<const SCALE: i32>(base_addr: *mut i32, vindex: __m128i, a: __m128i) {
+pub unsafe fn _mm_i32scatter_epi32<const SCALE: i32>(base_addr: *mut i32, vindex: __m128i, a: __m128i) {
     unsafe { let idx = lanes128_u32(vindex); let mut i = 0; while i < 4 { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i32, lanes128_u32(a)[i] as i32); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_i32scatter_epi64<const SCALE: i32>(base_addr: *mut i64, vindex: __m128i, a: __m128i) {
+pub unsafe fn _mm_i32scatter_epi64<const SCALE: i32>(base_addr: *mut i64, vindex: __m128i, a: __m128i) {
     unsafe { let idx = lanes128_u32(vindex); let mut i = 0; while i < 2 { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i64, lanes128_u64(a)[i] as i64); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_i32scatter_pd<const SCALE: i32>(base_addr: *mut f64, vindex: __m128i, a: __m128d) {
+pub unsafe fn _mm_i32scatter_pd<const SCALE: i32>(base_addr: *mut f64, vindex: __m128i, a: __m128d) {
     unsafe { let idx = lanes128_u32(vindex); let mut i = 0; while i < 2 { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f64, a.0[i]); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_i32scatter_ps<const SCALE: i32>(base_addr: *mut f32, vindex: __m128i, a: __m128) {
+pub unsafe fn _mm_i32scatter_ps<const SCALE: i32>(base_addr: *mut f32, vindex: __m128i, a: __m128) {
     unsafe { let idx = lanes128_u32(vindex); let mut i = 0; while i < 4 { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f32, a.0[i]); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm_i64gather_epi32<const SCALE: i32>(slice: *const i32, offsets: __m128i) -> __m128i {
+pub unsafe fn _mm_i64gather_epi32<const SCALE: i32>(slice: *const i32, offsets: __m128i) -> __m128i {
     unsafe { let idx = lanes128_u64(offsets); let mut r = [0u32; 4]; let mut i = 0; while i < 2 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i32) as u32; i += 1; } from128_u32(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm_i64gather_epi64<const SCALE: i32>(slice: *const i64, offsets: __m128i) -> __m128i {
+pub unsafe fn _mm_i64gather_epi64<const SCALE: i32>(slice: *const i64, offsets: __m128i) -> __m128i {
     unsafe { let idx = lanes128_u64(offsets); let mut r = [0u64; 2]; let mut i = 0; while i < 2 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i64) as u64; i += 1; } from128_u64(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm_i64gather_ps<const SCALE: i32>(slice: *const f32, offsets: __m128i) -> __m128 {
+pub unsafe fn _mm_i64gather_ps<const SCALE: i32>(slice: *const f32, offsets: __m128i) -> __m128 {
     unsafe { let idx = lanes128_u64(offsets); let mut r = [0.0f32; 4]; let mut i = 0; while i < 2 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f32); i += 1; } __m128(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_i64scatter_epi32<const SCALE: i32>(base_addr: *mut i32, vindex: __m128i, a: __m128i) {
+pub unsafe fn _mm_i64scatter_epi32<const SCALE: i32>(base_addr: *mut i32, vindex: __m128i, a: __m128i) {
     unsafe { let idx = lanes128_u64(vindex); let mut i = 0; while i < 2 { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i32, lanes128_u32(a)[i] as i32); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_i64scatter_epi64<const SCALE: i32>(base_addr: *mut i64, vindex: __m128i, a: __m128i) {
+pub unsafe fn _mm_i64scatter_epi64<const SCALE: i32>(base_addr: *mut i64, vindex: __m128i, a: __m128i) {
     unsafe { let idx = lanes128_u64(vindex); let mut i = 0; while i < 2 { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i64, lanes128_u64(a)[i] as i64); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_i64scatter_pd<const SCALE: i32>(base_addr: *mut f64, vindex: __m128i, a: __m128d) {
+pub unsafe fn _mm_i64scatter_pd<const SCALE: i32>(base_addr: *mut f64, vindex: __m128i, a: __m128d) {
     unsafe { let idx = lanes128_u64(vindex); let mut i = 0; while i < 2 { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f64, a.0[i]); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_i64scatter_ps<const SCALE: i32>(base_addr: *mut f32, vindex: __m128i, a: __m128) {
+pub unsafe fn _mm_i64scatter_ps<const SCALE: i32>(base_addr: *mut f32, vindex: __m128i, a: __m128) {
     unsafe { let idx = lanes128_u64(vindex); let mut i = 0; while i < 2 { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f32, a.0[i]); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_load_epi32(mem_addr: *const u8) -> __m128i {
+pub unsafe fn _mm_load_epi32(mem_addr: *const u8) -> __m128i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m128i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_load_epi64(mem_addr: *const u8) -> __m128i {
+pub unsafe fn _mm_load_epi64(mem_addr: *const u8) -> __m128i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m128i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_loadu_epi16(mem_addr: *const u8) -> __m128i {
+pub unsafe fn _mm_loadu_epi16(mem_addr: *const u8) -> __m128i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m128i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_loadu_epi64(mem_addr: *const u8) -> __m128i {
+pub unsafe fn _mm_loadu_epi64(mem_addr: *const u8) -> __m128i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m128i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_loadu_epi8(mem_addr: *const u8) -> __m128i {
+pub unsafe fn _mm_loadu_epi8(mem_addr: *const u8) -> __m128i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m128i) }
 }
 
@@ -25549,43 +25549,43 @@ pub fn _mm_srlv_epi64(a: __m128i, b: __m128i) -> __m128i {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_store_epi32(mem_addr: *mut u8, a: __m128i) -> () {
+pub unsafe fn _mm_store_epi32(mem_addr: *mut u8, a: __m128i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m128i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_store_epi64(mem_addr: *mut u8, a: __m128i) -> () {
+pub unsafe fn _mm_store_epi64(mem_addr: *mut u8, a: __m128i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m128i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_storeu_epi16(mem_addr: *mut u8, a: __m128i) -> () {
+pub unsafe fn _mm_storeu_epi16(mem_addr: *mut u8, a: __m128i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m128i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_storeu_epi64(mem_addr: *mut u8, a: __m128i) -> () {
+pub unsafe fn _mm_storeu_epi64(mem_addr: *mut u8, a: __m128i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m128i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_storeu_epi8(mem_addr: *mut u8, a: __m128i) -> () {
+pub unsafe fn _mm_storeu_epi8(mem_addr: *mut u8, a: __m128i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m128i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse"))]
-pub fn _mm_stream_ps(mem_addr: *mut u8, a: __m128) -> () {
+pub unsafe fn _mm_stream_ps(mem_addr: *mut u8, a: __m128) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m128, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_stream_si128(mem_addr: *mut u8, a: __m128i) -> () {
+pub unsafe fn _mm_stream_si128(mem_addr: *mut u8, a: __m128i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m128i, a) }
 }
 
@@ -26159,19 +26159,19 @@ pub fn _mm256_insertf128_ps<const IMM8: i32>(a: __m256, b: __m128) -> __m256 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm256_loadu2_m128(hi: *const f32, lo: *const f32) -> __m256 {
+pub unsafe fn _mm256_loadu2_m128(hi: *const f32, lo: *const f32) -> __m256 {
     unsafe { __m256([*lo, *lo.add(1), *lo.add(2), *lo.add(3), *hi, *hi.add(1), *hi.add(2), *hi.add(3)]) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm256_loadu2_m128d(hi: *const f64, lo: *const f64) -> __m256d {
+pub unsafe fn _mm256_loadu2_m128d(hi: *const f64, lo: *const f64) -> __m256d {
     unsafe { __m256d([*lo, *lo.add(1), *hi, *hi.add(1)]) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm256_loadu2_m128i(hi: *const __m128i, lo: *const __m128i) -> __m256i {
+pub unsafe fn _mm256_loadu2_m128i(hi: *const __m128i, lo: *const __m128i) -> __m256i {
     unsafe { let l = lanes128_i64(*lo); let h = lanes128_i64(*hi); from256_i64([l[0], l[1], h[0], h[1]]) }
 }
 
@@ -26452,25 +26452,25 @@ pub fn _mm256_srli_si256<const IMM8: i32>(a: __m256i) -> __m256i {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm256_storeu2_m128(hi: *mut f32, lo: *mut f32, a: __m256) -> () {
+pub unsafe fn _mm256_storeu2_m128(hi: *mut f32, lo: *mut f32, a: __m256) -> () {
     unsafe { let a = a.0; let mut i = 0; while i < 4 { *(lo as *mut f32).add(i) = a[i]; *(hi as *mut f32).add(i) = a[4+i]; i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm256_storeu2_m128d(hi: *mut f64, lo: *mut f64, a: __m256d) -> () {
+pub unsafe fn _mm256_storeu2_m128d(hi: *mut f64, lo: *mut f64, a: __m256d) -> () {
     unsafe { let a = a.0; let mut i = 0; while i < 2 { *(lo as *mut f64).add(i) = a[i]; *(hi as *mut f64).add(i) = a[2+i]; i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm256_storeu2_m128i(hi: *mut __m128i, lo: *mut __m128i, a: __m256i) -> () {
+pub unsafe fn _mm256_storeu2_m128i(hi: *mut __m128i, lo: *mut __m128i, a: __m256i) -> () {
     unsafe { let a = lanes256_i64(a); let mut lo_r = [0i64; 2]; let mut hi_r = [0i64; 2]; let mut i = 0; while i < 2 { lo_r[i] = a[i]; hi_r[i] = a[2+i]; i += 1; } *(lo as *mut __m128i) = crate::ptr::read_unaligned(lo_r.as_ptr() as *const __m128i); *(hi as *mut __m128i) = crate::ptr::read_unaligned(hi_r.as_ptr() as *const __m128i); }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_stream_load_si256(mem_addr: *const __m256i) -> __m256i {
+pub unsafe fn _mm256_stream_load_si256(mem_addr: *const __m256i) -> __m256i {
     unsafe { crate::ptr::read_unaligned(mem_addr) }
 }
 
@@ -27623,43 +27623,43 @@ pub fn _mm_lfence() -> () {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm_load1_ps(p: *const f32) -> __m128 {
+pub unsafe fn _mm_load1_ps(p: *const f32) -> __m128 {
     unsafe { let v = *p; __m128([v; 4]) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm_load_ps1(p: *const f32) -> __m128 {
+pub unsafe fn _mm_load_ps1(p: *const f32) -> __m128 {
     unsafe { let v = *p; __m128([v; 4]) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse"))]
-pub fn _mm_load_ss(p: *const f32) -> __m128 {
+pub unsafe fn _mm_load_ss(p: *const f32) -> __m128 {
     unsafe { __m128([*p, 0.0, 0.0, 0.0]) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse"))]
-pub fn _mm_loadr_ps(p: *const f32) -> __m128 {
+pub unsafe fn _mm_loadr_ps(p: *const f32) -> __m128 {
     unsafe { __m128([*p.add(3), *p.add(2), *p.add(1), *p]) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_loadu_si16(mem_addr: *const u8) -> __m128i {
+pub unsafe fn _mm_loadu_si16(mem_addr: *const u8) -> __m128i {
     unsafe { let mut r = [0u8; 16]; crate::ptr::copy_nonoverlapping(mem_addr, r.as_mut_ptr(), 2); from128_u8(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_loadu_si32(mem_addr: *const u8) -> __m128i {
+pub unsafe fn _mm_loadu_si32(mem_addr: *const u8) -> __m128i {
     unsafe { let mut r = [0u8; 16]; crate::ptr::copy_nonoverlapping(mem_addr, r.as_mut_ptr(), 4); from128_u8(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_loadu_si64(mem_addr: *const u8) -> __m128i {
+pub unsafe fn _mm_loadu_si64(mem_addr: *const u8) -> __m128i {
     unsafe { let mut r = [0u8; 16]; crate::ptr::copy_nonoverlapping(mem_addr, r.as_mut_ptr(), 8); from128_u8(r) }
 }
 
@@ -27965,73 +27965,73 @@ pub fn _mm_sqrt_ss(a: __m128) -> __m128 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse"))]
-pub fn _mm_store1_ps(p: *mut f32, a: __m128) -> () {
+pub unsafe fn _mm_store1_ps(p: *mut f32, a: __m128) -> () {
     unsafe { let v = a.0[0]; crate::ptr::write_unaligned(p, v); crate::ptr::write_unaligned(p.add(1), v); crate::ptr::write_unaligned(p.add(2), v); crate::ptr::write_unaligned(p.add(3), v); }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse"))]
-pub fn _mm_store_ps1(p: *mut f32, a: __m128) -> () {
+pub unsafe fn _mm_store_ps1(p: *mut f32, a: __m128) -> () {
     unsafe { let v = a.0[0]; crate::ptr::write_unaligned(p, v); crate::ptr::write_unaligned(p.add(1), v); crate::ptr::write_unaligned(p.add(2), v); crate::ptr::write_unaligned(p.add(3), v); }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse"))]
-pub fn _mm_store_ss(p: *mut f32, a: __m128) -> () {
+pub unsafe fn _mm_store_ss(p: *mut f32, a: __m128) -> () {
     unsafe { crate::ptr::write_unaligned(p, a.0[0]); }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse"))]
-pub fn _mm_storer_ps(p: *mut f32, a: __m128) -> () {
+pub unsafe fn _mm_storer_ps(p: *mut f32, a: __m128) -> () {
     unsafe { let a = a.0; let mut i = 0; while i < 4 { crate::ptr::write_unaligned(p.add(i), a[3-i]); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_storeu_si16(mem_addr: *mut u8, a: __m128i) -> () {
+pub unsafe fn _mm_storeu_si16(mem_addr: *mut u8, a: __m128i) -> () {
     unsafe { let a = lanes128_u8(a); crate::ptr::copy_nonoverlapping(a.as_ptr(), mem_addr, 2); }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_storeu_si32(mem_addr: *mut u8, a: __m128i) -> () {
+pub unsafe fn _mm_storeu_si32(mem_addr: *mut u8, a: __m128i) -> () {
     unsafe { let a = lanes128_u8(a); crate::ptr::copy_nonoverlapping(a.as_ptr(), mem_addr, 4); }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_storeu_si64(mem_addr: *mut u8, a: __m128i) -> () {
+pub unsafe fn _mm_storeu_si64(mem_addr: *mut u8, a: __m128i) -> () {
     unsafe { let a = lanes128_u8(a); crate::ptr::copy_nonoverlapping(a.as_ptr(), mem_addr, 8); }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_stream_load_si128(mem_addr: *const __m128i) -> __m128i {
+pub unsafe fn _mm_stream_load_si128(mem_addr: *const __m128i) -> __m128i {
     unsafe { crate::ptr::read_unaligned(mem_addr) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm_stream_sd(p: *mut f64, a: __m128d) -> () {
+pub unsafe fn _mm_stream_sd(p: *mut f64, a: __m128d) -> () {
     unsafe { crate::ptr::write_volatile(p as *mut f64, a.0[0]); }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_stream_si32(mem_addr: *mut i32, a: i32) -> () {
+pub unsafe fn _mm_stream_si32(mem_addr: *mut i32, a: i32) -> () {
     unsafe { crate::ptr::write_volatile(mem_addr, a); }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_stream_si64(mem_addr: *mut i64, a: i64) -> () {
+pub unsafe fn _mm_stream_si64(mem_addr: *mut i64, a: i64) -> () {
     unsafe { crate::ptr::write_volatile(mem_addr, a); }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse"))]
-pub fn _mm_stream_ss(p: *mut f32, a: __m128) -> () {
+pub unsafe fn _mm_stream_ss(p: *mut f32, a: __m128) -> () {
     unsafe { crate::ptr::write_volatile(p as *mut f32, a.0[0]); }
 }
 
@@ -29064,33 +29064,33 @@ pub fn _bswap(x: i32) -> i32 { unsafe { x.swap_bytes() } }
 
 pub fn _bswap64(x: i64) -> i64 { unsafe { x.swap_bytes() } }
 
-pub fn _bittest(p: *const i32, b: i32) -> u8 { unsafe { let e = crate::ptr::read_unaligned(p.offset((b as isize) >> 5)); ((e >> (b & 31)) & 1) as u8 } }
+pub unsafe fn _bittest(p: *const i32, b: i32) -> u8 { unsafe { let e = crate::ptr::read_unaligned(p.offset((b as isize) >> 5)); ((e >> (b & 31)) & 1) as u8 } }
 
-pub fn _bittestandset(p: *mut i32, b: i32) -> u8 { unsafe { let q = p.offset((b as isize) >> 5); let e = crate::ptr::read_unaligned(q); crate::ptr::write_unaligned(q, e | ((1 as i32) << (b & 31))); ((e >> (b & 31)) & 1) as u8 } }
+pub unsafe fn _bittestandset(p: *mut i32, b: i32) -> u8 { unsafe { let q = p.offset((b as isize) >> 5); let e = crate::ptr::read_unaligned(q); crate::ptr::write_unaligned(q, e | ((1 as i32) << (b & 31))); ((e >> (b & 31)) & 1) as u8 } }
 
-pub fn _bittestandreset(p: *mut i32, b: i32) -> u8 { unsafe { let q = p.offset((b as isize) >> 5); let e = crate::ptr::read_unaligned(q); crate::ptr::write_unaligned(q, e & !((1 as i32) << (b & 31))); ((e >> (b & 31)) & 1) as u8 } }
+pub unsafe fn _bittestandreset(p: *mut i32, b: i32) -> u8 { unsafe { let q = p.offset((b as isize) >> 5); let e = crate::ptr::read_unaligned(q); crate::ptr::write_unaligned(q, e & !((1 as i32) << (b & 31))); ((e >> (b & 31)) & 1) as u8 } }
 
-pub fn _bittestandcomplement(p: *mut i32, b: i32) -> u8 { unsafe { let q = p.offset((b as isize) >> 5); let e = crate::ptr::read_unaligned(q); crate::ptr::write_unaligned(q, e ^ ((1 as i32) << (b & 31))); ((e >> (b & 31)) & 1) as u8 } }
+pub unsafe fn _bittestandcomplement(p: *mut i32, b: i32) -> u8 { unsafe { let q = p.offset((b as isize) >> 5); let e = crate::ptr::read_unaligned(q); crate::ptr::write_unaligned(q, e ^ ((1 as i32) << (b & 31))); ((e >> (b & 31)) & 1) as u8 } }
 
-pub fn _bittest64(p: *const i64, b: i64) -> u8 { unsafe { let e = crate::ptr::read_unaligned(p.offset((b as isize) >> 6)); ((e >> (b & 63)) & 1) as u8 } }
+pub unsafe fn _bittest64(p: *const i64, b: i64) -> u8 { unsafe { let e = crate::ptr::read_unaligned(p.offset((b as isize) >> 6)); ((e >> (b & 63)) & 1) as u8 } }
 
-pub fn _bittestandset64(p: *mut i64, b: i64) -> u8 { unsafe { let q = p.offset((b as isize) >> 6); let e = crate::ptr::read_unaligned(q); crate::ptr::write_unaligned(q, e | ((1 as i64) << (b & 63))); ((e >> (b & 63)) & 1) as u8 } }
+pub unsafe fn _bittestandset64(p: *mut i64, b: i64) -> u8 { unsafe { let q = p.offset((b as isize) >> 6); let e = crate::ptr::read_unaligned(q); crate::ptr::write_unaligned(q, e | ((1 as i64) << (b & 63))); ((e >> (b & 63)) & 1) as u8 } }
 
-pub fn _bittestandreset64(p: *mut i64, b: i64) -> u8 { unsafe { let q = p.offset((b as isize) >> 6); let e = crate::ptr::read_unaligned(q); crate::ptr::write_unaligned(q, e & !((1 as i64) << (b & 63))); ((e >> (b & 63)) & 1) as u8 } }
+pub unsafe fn _bittestandreset64(p: *mut i64, b: i64) -> u8 { unsafe { let q = p.offset((b as isize) >> 6); let e = crate::ptr::read_unaligned(q); crate::ptr::write_unaligned(q, e & !((1 as i64) << (b & 63))); ((e >> (b & 63)) & 1) as u8 } }
 
-pub fn _bittestandcomplement64(p: *mut i64, b: i64) -> u8 { unsafe { let q = p.offset((b as isize) >> 6); let e = crate::ptr::read_unaligned(q); crate::ptr::write_unaligned(q, e ^ ((1 as i64) << (b & 63))); ((e >> (b & 63)) & 1) as u8 } }
+pub unsafe fn _bittestandcomplement64(p: *mut i64, b: i64) -> u8 { unsafe { let q = p.offset((b as isize) >> 6); let e = crate::ptr::read_unaligned(q); crate::ptr::write_unaligned(q, e ^ ((1 as i64) << (b & 63))); ((e >> (b & 63)) & 1) as u8 } }
 
-pub fn _m_prefetchrs(p: *const u8) { unsafe { } }
+pub unsafe fn _m_prefetchrs(p: *const u8) { unsafe { } }
 
-pub fn _mm_clflushopt(p: *const u8) { unsafe { } }
+pub unsafe fn _mm_clflushopt(p: *const u8) { unsafe { } }
 
-pub fn _movrs_i8(src: *const i8) -> i8 { unsafe { crate::ptr::read_volatile(src) } }
+pub unsafe fn _movrs_i8(src: *const i8) -> i8 { unsafe { crate::ptr::read_volatile(src) } }
 
-pub fn _movrs_i16(src: *const i16) -> i16 { unsafe { crate::ptr::read_volatile(src) } }
+pub unsafe fn _movrs_i16(src: *const i16) -> i16 { unsafe { crate::ptr::read_volatile(src) } }
 
-pub fn _movrs_i32(src: *const i32) -> i32 { unsafe { crate::ptr::read_volatile(src) } }
+pub unsafe fn _movrs_i32(src: *const i32) -> i32 { unsafe { crate::ptr::read_volatile(src) } }
 
-pub fn _movrs_i64(src: *const i64) -> i64 { unsafe { crate::ptr::read_volatile(src) } }
+pub unsafe fn _movrs_i64(src: *const i64) -> i64 { unsafe { crate::ptr::read_volatile(src) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="rdrand"))]
@@ -29847,13 +29847,13 @@ fn sm4_key_f(t: u32) -> u32 {
 // ================= generated x86-64 simd extension block ================
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vp2intersect"))]
-pub fn _mm256_2intersect_epi32(a: __m256i, b: __m256i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
+pub unsafe fn _mm256_2intersect_epi32(a: __m256i, b: __m256i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
     unsafe { let a = lanes256_i32(a); let b = lanes256_i32(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 8 { let mut j = 0; while j < 8 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1; *k2_out = k2; }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vp2intersect"))]
-pub fn _mm256_2intersect_epi64(a: __m256i, b: __m256i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
+pub unsafe fn _mm256_2intersect_epi64(a: __m256i, b: __m256i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
     unsafe { let a = lanes256_i64(a); let b = lanes256_i64(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 4 { let mut j = 0; while j < 4 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1; *k2_out = k2; }
 }
 
@@ -29937,13 +29937,13 @@ pub fn _mm256_sm4rnds4_epi32(a: __m256i, b: __m256i) -> __m256i {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vp2intersect"))]
-pub fn _mm512_2intersect_epi32(a: __m512i, b: __m512i, k1_out: *mut __mmask16, k2_out: *mut __mmask16) -> () {
+pub unsafe fn _mm512_2intersect_epi32(a: __m512i, b: __m512i, k1_out: *mut __mmask16, k2_out: *mut __mmask16) -> () {
     unsafe { let a = lanes512_i32(a); let b = lanes512_i32(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 16 { let mut j = 0; while j < 16 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1; *k2_out = k2; }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vp2intersect"))]
-pub fn _mm512_2intersect_epi64(a: __m512i, b: __m512i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
+pub unsafe fn _mm512_2intersect_epi64(a: __m512i, b: __m512i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
     unsafe { let a = lanes512_i64(a); let b = lanes512_i64(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 8 { let mut j = 0; while j < 8 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1; *k2_out = k2; }
 }
 
@@ -29979,13 +29979,13 @@ pub fn _mm512_popcnt_epi8(a: __m512i) -> __m512i {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vp2intersect"))]
-pub fn _mm_2intersect_epi32(a: __m128i, b: __m128i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
+pub unsafe fn _mm_2intersect_epi32(a: __m128i, b: __m128i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
     unsafe { let a = lanes128_i32(a); let b = lanes128_i32(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 4 { let mut j = 0; while j < 4 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1; *k2_out = k2; }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vp2intersect"))]
-pub fn _mm_2intersect_epi64(a: __m128i, b: __m128i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
+pub unsafe fn _mm_2intersect_epi64(a: __m128i, b: __m128i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
     unsafe { let a = lanes128_i64(a); let b = lanes128_i64(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 2 { let mut j = 0; while j < 2 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1; *k2_out = k2; }
 }
 
@@ -30923,97 +30923,97 @@ pub fn _mm512_getmant_ps<const NORM: i32, const SIGN: i32>(a: __m512) -> __m512 
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i32gather_epi32<const SCALE: i32>(offsets: __m512i, slice: *const i32) -> __m512i {
+pub unsafe fn _mm512_i32gather_epi32<const SCALE: i32>(offsets: __m512i, slice: *const i32) -> __m512i {
     unsafe { let idx = lanes512_u32(offsets); let mut r = [0u32; 16]; let mut i = 0; while i < 16 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i32) as u32; i += 1; } from512_u32(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i32gather_epi64<const SCALE: i32>(offsets: __m256i, slice: *const i64) -> __m512i {
+pub unsafe fn _mm512_i32gather_epi64<const SCALE: i32>(offsets: __m256i, slice: *const i64) -> __m512i {
     unsafe { let idx = lanes256_u32(offsets); let mut r = [0u64; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i64) as u64; i += 1; } from512_u64(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i32gather_pd<const SCALE: i32>(offsets: __m256i, slice: *const f64) -> __m512d {
+pub unsafe fn _mm512_i32gather_pd<const SCALE: i32>(offsets: __m256i, slice: *const f64) -> __m512d {
     unsafe { let idx = lanes256_u32(offsets); let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f64); i += 1; } __m512d(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i32gather_ps<const SCALE: i32>(offsets: __m512i, slice: *const f32) -> __m512 {
+pub unsafe fn _mm512_i32gather_ps<const SCALE: i32>(offsets: __m512i, slice: *const f32) -> __m512 {
     unsafe { let idx = lanes512_u32(offsets); let mut r = [0.0f32; 16]; let mut i = 0; while i < 16 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f32); i += 1; } __m512(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i32scatter_epi32<const SCALE: i32>(slice: *mut i32, offsets: __m512i, src: __m512i) {
+pub unsafe fn _mm512_i32scatter_epi32<const SCALE: i32>(slice: *mut i32, offsets: __m512i, src: __m512i) {
     unsafe { let idx = lanes512_u32(offsets); let mut i = 0; while i < 16 { crate::ptr::write_unaligned((slice as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i32, lanes512_u32(src)[i] as i32); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i32scatter_epi64<const SCALE: i32>(slice: *mut i64, offsets: __m256i, src: __m512i) {
+pub unsafe fn _mm512_i32scatter_epi64<const SCALE: i32>(slice: *mut i64, offsets: __m256i, src: __m512i) {
     unsafe { let idx = lanes256_u32(offsets); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((slice as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i64, lanes512_u64(src)[i] as i64); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i32scatter_pd<const SCALE: i32>(slice: *mut f64, offsets: __m256i, src: __m512d) {
+pub unsafe fn _mm512_i32scatter_pd<const SCALE: i32>(slice: *mut f64, offsets: __m256i, src: __m512d) {
     unsafe { let idx = lanes256_u32(offsets); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((slice as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f64, src.0[i]); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i32scatter_ps<const SCALE: i32>(slice: *mut f32, offsets: __m512i, src: __m512) {
+pub unsafe fn _mm512_i32scatter_ps<const SCALE: i32>(slice: *mut f32, offsets: __m512i, src: __m512) {
     unsafe { let idx = lanes512_u32(offsets); let mut i = 0; while i < 16 { crate::ptr::write_unaligned((slice as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f32, src.0[i]); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i64gather_epi32<const SCALE: i32>(offsets: __m512i, slice: *const i32) -> __m256i {
+pub unsafe fn _mm512_i64gather_epi32<const SCALE: i32>(offsets: __m512i, slice: *const i32) -> __m256i {
     unsafe { let idx = lanes512_u64(offsets); let mut r = [0u32; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i32) as u32; i += 1; } from256_u32(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i64gather_epi64<const SCALE: i32>(offsets: __m512i, slice: *const i64) -> __m512i {
+pub unsafe fn _mm512_i64gather_epi64<const SCALE: i32>(offsets: __m512i, slice: *const i64) -> __m512i {
     unsafe { let idx = lanes512_u64(offsets); let mut r = [0u64; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i64) as u64; i += 1; } from512_u64(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i64gather_pd<const SCALE: i32>(offsets: __m512i, slice: *const f64) -> __m512d {
+pub unsafe fn _mm512_i64gather_pd<const SCALE: i32>(offsets: __m512i, slice: *const f64) -> __m512d {
     unsafe { let idx = lanes512_u64(offsets); let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f64); i += 1; } __m512d(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i64gather_ps<const SCALE: i32>(offsets: __m512i, slice: *const f32) -> __m256 {
+pub unsafe fn _mm512_i64gather_ps<const SCALE: i32>(offsets: __m512i, slice: *const f32) -> __m256 {
     unsafe { let idx = lanes512_u64(offsets); let mut r = [0.0f32; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f32); i += 1; } __m256(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i64scatter_epi32<const SCALE: i32>(slice: *mut i32, offsets: __m512i, src: __m256i) {
+pub unsafe fn _mm512_i64scatter_epi32<const SCALE: i32>(slice: *mut i32, offsets: __m512i, src: __m256i) {
     unsafe { let idx = lanes512_u64(offsets); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((slice as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i32, lanes256_u32(src)[i] as i32); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i64scatter_epi64<const SCALE: i32>(slice: *mut i64, offsets: __m512i, src: __m512i) {
+pub unsafe fn _mm512_i64scatter_epi64<const SCALE: i32>(slice: *mut i64, offsets: __m512i, src: __m512i) {
     unsafe { let idx = lanes512_u64(offsets); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((slice as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i64, lanes512_u64(src)[i] as i64); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i64scatter_pd<const SCALE: i32>(slice: *mut f64, offsets: __m512i, src: __m512d) {
+pub unsafe fn _mm512_i64scatter_pd<const SCALE: i32>(slice: *mut f64, offsets: __m512i, src: __m512d) {
     unsafe { let idx = lanes512_u64(offsets); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((slice as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f64, src.0[i]); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i64scatter_ps<const SCALE: i32>(slice: *mut f32, offsets: __m512i, src: __m256) {
+pub unsafe fn _mm512_i64scatter_ps<const SCALE: i32>(slice: *mut f32, offsets: __m512i, src: __m256) {
     unsafe { let idx = lanes512_u64(offsets); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((slice as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f32, src.0[i]); i += 1; } }
 }
 
@@ -31055,61 +31055,61 @@ pub fn _mm512_inserti64x2<const MASK1: i32>(a: __m512i, b: __m128i) -> __m512i {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_load_epi32(mem_addr: *const u8) -> __m512i {
+pub unsafe fn _mm512_load_epi32(mem_addr: *const u8) -> __m512i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_load_epi64(mem_addr: *const u8) -> __m512i {
+pub unsafe fn _mm512_load_epi64(mem_addr: *const u8) -> __m512i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_load_pd(mem_addr: *const u8) -> __m512d {
+pub unsafe fn _mm512_load_pd(mem_addr: *const u8) -> __m512d {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512d) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_load_ps(mem_addr: *const u8) -> __m512 {
+pub unsafe fn _mm512_load_ps(mem_addr: *const u8) -> __m512 {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_load_si512(mem_addr: *const u8) -> __m512i {
+pub unsafe fn _mm512_load_si512(mem_addr: *const u8) -> __m512i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_loadu_epi16(mem_addr: *const u8) -> __m512i {
+pub unsafe fn _mm512_loadu_epi16(mem_addr: *const u8) -> __m512i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_loadu_epi32(mem_addr: *const u8) -> __m512i {
+pub unsafe fn _mm512_loadu_epi32(mem_addr: *const u8) -> __m512i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_loadu_epi64(mem_addr: *const u8) -> __m512i {
+pub unsafe fn _mm512_loadu_epi64(mem_addr: *const u8) -> __m512i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_loadu_epi8(mem_addr: *const u8) -> __m512i {
+pub unsafe fn _mm512_loadu_epi8(mem_addr: *const u8) -> __m512i {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512i) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_loadu_pd(mem_addr: *const u8) -> __m512d {
+pub unsafe fn _mm512_loadu_pd(mem_addr: *const u8) -> __m512d {
     unsafe { crate::ptr::read_unaligned(mem_addr as *const __m512d) }
 }
 
@@ -31703,79 +31703,79 @@ pub fn _mm512_srlv_epi32(a: __m512i, b: __m512i) -> __m512i {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_store_epi32(mem_addr: *mut u8, a: __m512i) -> () {
+pub unsafe fn _mm512_store_epi32(mem_addr: *mut u8, a: __m512i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_store_epi64(mem_addr: *mut u8, a: __m512i) -> () {
+pub unsafe fn _mm512_store_epi64(mem_addr: *mut u8, a: __m512i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_store_pd(mem_addr: *mut u8, a: __m512d) -> () {
+pub unsafe fn _mm512_store_pd(mem_addr: *mut u8, a: __m512d) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512d, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_store_ps(mem_addr: *mut u8, a: __m512) -> () {
+pub unsafe fn _mm512_store_ps(mem_addr: *mut u8, a: __m512) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_store_si512(mem_addr: *mut u8, a: __m512i) -> () {
+pub unsafe fn _mm512_store_si512(mem_addr: *mut u8, a: __m512i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_storeu_epi16(mem_addr: *mut u8, a: __m512i) -> () {
+pub unsafe fn _mm512_storeu_epi16(mem_addr: *mut u8, a: __m512i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_storeu_epi32(mem_addr: *mut u8, a: __m512i) -> () {
+pub unsafe fn _mm512_storeu_epi32(mem_addr: *mut u8, a: __m512i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_storeu_epi64(mem_addr: *mut u8, a: __m512i) -> () {
+pub unsafe fn _mm512_storeu_epi64(mem_addr: *mut u8, a: __m512i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_storeu_epi8(mem_addr: *mut u8, a: __m512i) -> () {
+pub unsafe fn _mm512_storeu_epi8(mem_addr: *mut u8, a: __m512i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_storeu_pd(mem_addr: *mut u8, a: __m512d) -> () {
+pub unsafe fn _mm512_storeu_pd(mem_addr: *mut u8, a: __m512d) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512d, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_stream_pd(mem_addr: *mut u8, a: __m512d) -> () {
+pub unsafe fn _mm512_stream_pd(mem_addr: *mut u8, a: __m512d) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512d, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_stream_ps(mem_addr: *mut u8, a: __m512) -> () {
+pub unsafe fn _mm512_stream_ps(mem_addr: *mut u8, a: __m512) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512, a) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_stream_si512(mem_addr: *mut u8, a: __m512i) -> () {
+pub unsafe fn _mm512_stream_si512(mem_addr: *mut u8, a: __m512i) -> () {
     unsafe { crate::ptr::write_unaligned(mem_addr as *mut __m512i, a) }
 }
 
@@ -32731,25 +32731,25 @@ pub fn _mm512_getmant_round_ps<const NORM: i32, const SIGN: i32, const ROUNDING:
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i32logather_epi64<const SCALE: i32>(vindex: __m512i, base_addr: *const i64) -> __m512i {
+pub unsafe fn _mm512_i32logather_epi64<const SCALE: i32>(vindex: __m512i, base_addr: *const i64) -> __m512i {
     unsafe { let idx = lanes512_u32(vindex); let mut r = [0u64; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i32 as i64) * (SCALE as i64)) as isize) as *const i64) as u64; i += 1; } from512_u64(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i32logather_pd<const SCALE: i32>(vindex: __m512i, base_addr: *const f64) -> __m512d {
+pub unsafe fn _mm512_i32logather_pd<const SCALE: i32>(vindex: __m512i, base_addr: *const f64) -> __m512d {
     unsafe { let idx = lanes512_u32(vindex); let mut r = [0.0f64; 8]; let mut i = 0; while i < 8 { r[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i32 as i64) * (SCALE as i64)) as isize) as *const f64); i += 1; } __m512d(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i32loscatter_epi64<const SCALE: i32>(base_addr: *mut i64, vindex: __m512i, a: __m512i) {
+pub unsafe fn _mm512_i32loscatter_epi64<const SCALE: i32>(base_addr: *mut i64, vindex: __m512i, a: __m512i) {
     unsafe { let idx = lanes512_u32(vindex); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i32 as i64) * (SCALE as i64)) as isize) as *mut i64, lanes512_u64(a)[i] as i64); i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_i32loscatter_pd<const SCALE: i32>(base_addr: *mut f64, vindex: __m512i, a: __m512d) {
+pub unsafe fn _mm512_i32loscatter_pd<const SCALE: i32>(base_addr: *mut f64, vindex: __m512i, a: __m512d) {
     unsafe { let idx = lanes512_u32(vindex); let mut i = 0; while i < 8 { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i32 as i64) * (SCALE as i64)) as isize) as *mut f64, a.0[i]); i += 1; } }
 }
 
@@ -33055,7 +33055,7 @@ pub fn _mm512_sqrt_round_ps<const ROUNDING: i32>(a: __m512) -> __m512 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_stream_load_si512(mem_addr: *const __m512i) -> __m512i {
+pub unsafe fn _mm512_stream_load_si512(mem_addr: *const __m512i) -> __m512i {
     unsafe { crate::ptr::read_unaligned(mem_addr) }
 }
 
@@ -35038,37 +35038,37 @@ pub fn _mm256_mask3_fnmsub_ps(a: __m256, b: __m256, c: __m256, k: __mmask8) -> _
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_maskload_epi32(mem_addr: *const i8, mask: __m256i) -> __m256i {
+pub unsafe fn _mm256_maskload_epi32(mem_addr: *const i8, mask: __m256i) -> __m256i {
     unsafe { let m = lanes256_i32(mask); let mut r = [0i32; 8]; let mut i = 0; while i < 8 { if m[i] < 0 { r[i] = crate::ptr::read_unaligned(mem_addr.add(i) as *const i32); } i += 1; } from256_i32(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_maskload_epi64(mem_addr: *const i8, mask: __m256i) -> __m256i {
+pub unsafe fn _mm256_maskload_epi64(mem_addr: *const i8, mask: __m256i) -> __m256i {
     unsafe { let m = lanes256_i64(mask); let mut r = [0i64; 4]; let mut i = 0; while i < 4 { if m[i] < 0 { r[i] = crate::ptr::read_unaligned(mem_addr.add(i) as *const i64); } i += 1; } from256_i64(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm256_maskload_ps(mem_addr: *const f32, mask: __m256i) -> __m256 {
+pub unsafe fn _mm256_maskload_ps(mem_addr: *const f32, mask: __m256i) -> __m256 {
     unsafe { let m = lanes256_i32(mask); let mut r = [0.0f32; 8]; let mut i = 0; while i < 8 { if m[i] < 0 { r[i] = *(mem_addr as *const f32).add(i); } i += 1; } __m256(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_maskstore_epi32(mem_addr: *mut i8, mask: __m256i, a: __m256i) -> () {
+pub unsafe fn _mm256_maskstore_epi32(mem_addr: *mut i8, mask: __m256i, a: __m256i) -> () {
     unsafe { let m = lanes256_i32(mask); let a = lanes256_i32(a); let mut i = 0; while i < 8 { if m[i] < 0 { crate::ptr::write_unaligned(mem_addr.add(i) as *mut i32, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_maskstore_epi64(mem_addr: *mut i8, mask: __m256i, a: __m256i) -> () {
+pub unsafe fn _mm256_maskstore_epi64(mem_addr: *mut i8, mask: __m256i, a: __m256i) -> () {
     unsafe { let m = lanes256_i64(mask); let a = lanes256_i64(a); let mut i = 0; while i < 4 { if m[i] < 0 { crate::ptr::write_unaligned(mem_addr.add(i) as *mut i64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm256_maskstore_ps(mem_addr: *mut f32, mask: __m256i, a: __m256) -> () {
+pub unsafe fn _mm256_maskstore_ps(mem_addr: *mut f32, mask: __m256i, a: __m256) -> () {
     unsafe { let m = lanes256_i32(mask); let a = a.0; let mut i = 0; while i < 8 { if m[i] < 0 { *(mem_addr as *mut f32).add(i) = a[i]; } i += 1; } }
 }
 
@@ -35494,43 +35494,43 @@ pub fn _mm_mask3_fnmsub_ss(a: __m128, b: __m128, c: __m128, k: __mmask8) -> __m1
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_maskload_epi32(mem_addr: *const i8, mask: __m128i) -> __m128i {
+pub unsafe fn _mm_maskload_epi32(mem_addr: *const i8, mask: __m128i) -> __m128i {
     unsafe { let m = lanes128_i32(mask); let mut r = [0i32; 4]; let mut i = 0; while i < 4 { if m[i] < 0 { r[i] = crate::ptr::read_unaligned(mem_addr.add(i) as *const i32); } i += 1; } from128_i32(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_maskload_epi64(mem_addr: *const i8, mask: __m128i) -> __m128i {
+pub unsafe fn _mm_maskload_epi64(mem_addr: *const i8, mask: __m128i) -> __m128i {
     unsafe { let m = lanes128_i64(mask); let mut r = [0i64; 2]; let mut i = 0; while i < 2 { if m[i] < 0 { r[i] = crate::ptr::read_unaligned(mem_addr.add(i) as *const i64); } i += 1; } from128_i64(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm_maskload_ps(mem_addr: *const f32, mask: __m128i) -> __m128 {
+pub unsafe fn _mm_maskload_ps(mem_addr: *const f32, mask: __m128i) -> __m128 {
     unsafe { let m = lanes128_i32(mask); let mut r = [0.0f32; 4]; let mut i = 0; while i < 4 { if m[i] < 0 { r[i] = *(mem_addr as *const f32).add(i); } i += 1; } __m128(r) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_maskmoveu_si128(a: __m128i, mask: __m128i, mem_addr: *mut i8) -> () {
+pub unsafe fn _mm_maskmoveu_si128(a: __m128i, mask: __m128i, mem_addr: *mut i8) -> () {
     unsafe { let a = lanes128_u8(a); let m = lanes128_u8(mask); let mut i = 0; while i < 16 { if m[i] & 0x80 != 0 { *mem_addr.add(i) = a[i] as i8; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_maskstore_epi32(mem_addr: *mut i8, mask: __m128i, a: __m128i) -> () {
+pub unsafe fn _mm_maskstore_epi32(mem_addr: *mut i8, mask: __m128i, a: __m128i) -> () {
     unsafe { let m = lanes128_i32(mask); let a = lanes128_i32(a); let mut i = 0; while i < 4 { if m[i] < 0 { crate::ptr::write_unaligned(mem_addr.add(i) as *mut i32, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="sse2"))]
-pub fn _mm_maskstore_epi64(mem_addr: *mut i8, mask: __m128i, a: __m128i) -> () {
+pub unsafe fn _mm_maskstore_epi64(mem_addr: *mut i8, mask: __m128i, a: __m128i) -> () {
     unsafe { let m = lanes128_i64(mask); let a = lanes128_i64(a); let mut i = 0; while i < 2 { if m[i] < 0 { crate::ptr::write_unaligned(mem_addr.add(i) as *mut i64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx"))]
-pub fn _mm_maskstore_ps(mem_addr: *mut f32, mask: __m128i, a: __m128) -> () {
+pub unsafe fn _mm_maskstore_ps(mem_addr: *mut f32, mask: __m128i, a: __m128) -> () {
     unsafe { let m = lanes128_i32(mask); let a = a.0; let mut i = 0; while i < 4 { if m[i] < 0 { *(mem_addr as *mut f32).add(i) = a[i]; } i += 1; } }
 }
 
@@ -36166,37 +36166,37 @@ pub fn _mm256_mask_cmpneq_epu8_mask(k1: __mmask32, a: __m256i, b: __m256i) -> __
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2,avx512vl"))]
-pub fn _mm256_mask_compressstoreu_epi16(base_addr: *mut i16, k: __mmask16, a: __m256i) {
+pub unsafe fn _mm256_mask_compressstoreu_epi16(base_addr: *mut i16, k: __mmask16, a: __m256i) {
     unsafe { let a = lanes256_u16(a); let mut j = 0usize; let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*2) as *mut u16, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_compressstoreu_epi32(base_addr: *mut i32, k: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_compressstoreu_epi32(base_addr: *mut i32, k: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u32(a); let mut j = 0usize; let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*4) as *mut u32, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_compressstoreu_epi64(base_addr: *mut i64, k: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_compressstoreu_epi64(base_addr: *mut i64, k: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u64(a); let mut j = 0usize; let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*8) as *mut u64, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2,avx512vl"))]
-pub fn _mm256_mask_compressstoreu_epi8(base_addr: *mut i8, k: __mmask32, a: __m256i) {
+pub unsafe fn _mm256_mask_compressstoreu_epi8(base_addr: *mut i8, k: __mmask32, a: __m256i) {
     unsafe { let a = lanes256_u8(a); let mut j = 0usize; let mut i = 0; while i < 32 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*1) as *mut u8, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_compressstoreu_pd(base_addr: *mut f64, k: __mmask8, a: __m256d) {
+pub unsafe fn _mm256_mask_compressstoreu_pd(base_addr: *mut f64, k: __mmask8, a: __m256d) {
     unsafe { let a = a.0; let mut j = 0usize; let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*8) as *mut f64, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_compressstoreu_ps(base_addr: *mut f32, k: __mmask8, a: __m256) {
+pub unsafe fn _mm256_mask_compressstoreu_ps(base_addr: *mut f32, k: __mmask8, a: __m256) {
     unsafe { let a = a.0; let mut j = 0usize; let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*4) as *mut f32, a[i]); j += 1; } i += 1; } }
 }
 
@@ -36232,7 +36232,7 @@ pub fn _mm256_mask_cvtepi16_epi8(src: __m128i, k: __mmask16, a: __m256i) -> __m1
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm256_mask_cvtepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask16, a: __m256i) {
+pub unsafe fn _mm256_mask_cvtepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask16, a: __m256i) {
     unsafe { let a = lanes256_u16(a); let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut u8, a[i] as u8); } i += 1; } }
 }
 
@@ -36268,13 +36268,13 @@ pub fn _mm256_mask_cvtepi32_ps(src: __m256, k: __mmask8, a: __m256i) -> __m256 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_cvtepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u32(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut u16, a[i] as u16); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_cvtepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u32(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut u8, a[i] as u8); } i += 1; } }
 }
 
@@ -36310,19 +36310,19 @@ pub fn _mm256_mask_cvtepi64_ps(src: __m128, k: __mmask8, a: __m256i) -> __m128 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_cvtepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut u16, a[i] as u16); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_cvtepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut u32, a[i] as u32); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_cvtepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut u8, a[i] as u8); } i += 1; } }
 }
 
@@ -36466,7 +36466,7 @@ pub fn _mm256_mask_cvtsepi16_epi8(src: __m128i, k: __mmask16, a: __m256i) -> __m
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm256_mask_cvtsepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask16, a: __m256i) {
+pub unsafe fn _mm256_mask_cvtsepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask16, a: __m256i) {
     unsafe { let a = lanes256_u16(a); let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i] as i16; if v > i8::MAX as i16 { i8::MAX } else if v < i8::MIN as i16 { i8::MIN } else { v as i8 } }); } i += 1; } }
 }
 
@@ -36484,13 +36484,13 @@ pub fn _mm256_mask_cvtsepi32_epi8(src: __m128i, k: __mmask8, a: __m256i) -> __m1
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtsepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_cvtsepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u32(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i] as i32; if v > i16::MAX as i32 { i16::MAX } else if v < i16::MIN as i32 { i16::MIN } else { v as i16 } }); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtsepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_cvtsepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u32(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i] as i32; if v > i8::MAX as i32 { i8::MAX } else if v < i8::MIN as i32 { i8::MIN } else { v as i8 } }); } i += 1; } }
 }
 
@@ -36514,19 +36514,19 @@ pub fn _mm256_mask_cvtsepi64_epi8(src: __m128i, k: __mmask8, a: __m256i) -> __m1
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtsepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_cvtsepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i] as i64; if v > i16::MAX as i64 { i16::MAX } else if v < i16::MIN as i64 { i16::MIN } else { v as i16 } }); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtsepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_cvtsepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut i32, { let v = a[i] as i64; if v > i32::MAX as i64 { i32::MAX } else if v < i32::MIN as i64 { i32::MIN } else { v as i32 } }); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtsepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_cvtsepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i] as i64; if v > i8::MAX as i64 { i8::MAX } else if v < i8::MIN as i64 { i8::MIN } else { v as i8 } }); } i += 1; } }
 }
 
@@ -36586,7 +36586,7 @@ pub fn _mm256_mask_cvtusepi16_epi8(src: __m128i, k: __mmask16, a: __m256i) -> __
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm256_mask_cvtusepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask16, a: __m256i) { unsafe { let a = lanes256_u16(a); let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u16 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
+pub unsafe fn _mm256_mask_cvtusepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask16, a: __m256i) { unsafe { let a = lanes256_u16(a); let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u16 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
@@ -36602,11 +36602,11 @@ pub fn _mm256_mask_cvtusepi32_epi8(src: __m128i, k: __mmask8, a: __m256i) -> __m
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtusepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m256i) { unsafe { let a = lanes256_u32(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i]; if v > u16::MAX as u32 { u16::MAX as i16 } else { v as i16 } }); } i += 1; } } }
+pub unsafe fn _mm256_mask_cvtusepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m256i) { unsafe { let a = lanes256_u32(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i]; if v > u16::MAX as u32 { u16::MAX as i16 } else { v as i16 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtusepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m256i) { unsafe { let a = lanes256_u32(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u32 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
+pub unsafe fn _mm256_mask_cvtusepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m256i) { unsafe { let a = lanes256_u32(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u32 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
@@ -36628,15 +36628,15 @@ pub fn _mm256_mask_cvtusepi64_epi8(src: __m128i, k: __mmask8, a: __m256i) -> __m
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtusepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m256i) { unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i]; if v > u16::MAX as u64 { u16::MAX as i16 } else { v as i16 } }); } i += 1; } } }
+pub unsafe fn _mm256_mask_cvtusepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m256i) { unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i]; if v > u16::MAX as u64 { u16::MAX as i16 } else { v as i16 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtusepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m256i) { unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut i32, { let v = a[i]; if v > u32::MAX as u64 { u32::MAX as i32 } else { v as i32 } }); } i += 1; } } }
+pub unsafe fn _mm256_mask_cvtusepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m256i) { unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut i32, { let v = a[i]; if v > u32::MAX as u64 { u32::MAX as i32 } else { v as i32 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_cvtusepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m256i) { unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u64 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
+pub unsafe fn _mm256_mask_cvtusepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m256i) { unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u64 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
@@ -36718,37 +36718,37 @@ pub fn _mm256_mask_expand_ps(src: __m256, k: __mmask8, a: __m256) -> __m256 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2,avx512vl"))]
-pub fn _mm256_mask_expandloadu_epi16(src: __m256i, k: __mmask16, mem_addr: *const i16) -> __m256i {
+pub unsafe fn _mm256_mask_expandloadu_epi16(src: __m256i, k: __mmask16, mem_addr: *const i16) -> __m256i {
     unsafe { let s = lanes256_u16(src); let mut o = [0u16; 16]; let mut i = 0; let mut j = 0usize; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*2) as *const u16); j += 1; v } else { s[i] }; i += 1; } from256_u16(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_expandloadu_epi32(src: __m256i, k: __mmask8, mem_addr: *const i32) -> __m256i {
+pub unsafe fn _mm256_mask_expandloadu_epi32(src: __m256i, k: __mmask8, mem_addr: *const i32) -> __m256i {
     unsafe { let s = lanes256_u32(src); let mut o = [0u32; 8]; let mut i = 0; let mut j = 0usize; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*4) as *const u32); j += 1; v } else { s[i] }; i += 1; } from256_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_expandloadu_epi64(src: __m256i, k: __mmask8, mem_addr: *const i64) -> __m256i {
+pub unsafe fn _mm256_mask_expandloadu_epi64(src: __m256i, k: __mmask8, mem_addr: *const i64) -> __m256i {
     unsafe { let s = lanes256_u64(src); let mut o = [0u64; 4]; let mut i = 0; let mut j = 0usize; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*8) as *const u64); j += 1; v } else { s[i] }; i += 1; } from256_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2,avx512vl"))]
-pub fn _mm256_mask_expandloadu_epi8(src: __m256i, k: __mmask32, mem_addr: *const i8) -> __m256i {
+pub unsafe fn _mm256_mask_expandloadu_epi8(src: __m256i, k: __mmask32, mem_addr: *const i8) -> __m256i {
     unsafe { let s = lanes256_u8(src); let mut o = [0u8; 32]; let mut i = 0; let mut j = 0usize; while i < 32 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*1) as *const u8); j += 1; v } else { s[i] }; i += 1; } from256_u8(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_expandloadu_pd(src: __m256d, k: __mmask8, mem_addr: *const f64) -> __m256d {
+pub unsafe fn _mm256_mask_expandloadu_pd(src: __m256d, k: __mmask8, mem_addr: *const f64) -> __m256d {
     unsafe { let s = src.0; let mut o = [0.0f64; 4]; let mut i = 0; let mut j = 0usize; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*8) as *const f64); j += 1; v } else { s[i] }; i += 1; } __m256d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_expandloadu_ps(src: __m256, k: __mmask8, mem_addr: *const f32) -> __m256 {
+pub unsafe fn _mm256_mask_expandloadu_ps(src: __m256, k: __mmask8, mem_addr: *const f32) -> __m256 {
     unsafe { let s = src.0; let mut o = [0.0f32; 8]; let mut i = 0; let mut j = 0usize; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*4) as *const f32); j += 1; v } else { s[i] }; i += 1; } __m256(o) }
 }
 
@@ -36898,85 +36898,85 @@ pub fn _mm256_mask_getmant_ps<const NORM: i32, const SIGN: i32>(src: __m256, k: 
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_mask_i32gather_epi32<const SCALE: i32>(src: __m256i, slice: *const i32, offsets: __m256i, mask: __m256i) -> __m256i {
+pub unsafe fn _mm256_mask_i32gather_epi32<const SCALE: i32>(src: __m256i, slice: *const i32, offsets: __m256i, mask: __m256i) -> __m256i {
     unsafe { let idx = lanes256_u32(offsets); let m = lanes256_u32(mask); let mut o = lanes256_u32(src); let mut i = 0; while i < 8 { if (i < 8 && (((m[i] as i32) < 0))) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i32) as u32; } i += 1; } from256_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_mask_i32gather_epi64<const SCALE: i32>(src: __m256i, slice: *const i64, offsets: __m128i, mask: __m256i) -> __m256i {
+pub unsafe fn _mm256_mask_i32gather_epi64<const SCALE: i32>(src: __m256i, slice: *const i64, offsets: __m128i, mask: __m256i) -> __m256i {
     unsafe { let idx = lanes128_u32(offsets); let m = lanes256_u64(mask); let mut o = lanes256_u64(src); let mut i = 0; while i < 4 { if (i < 4 && (((m[i] as i64) < 0))) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i64) as u64; } i += 1; } from256_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_mask_i32gather_ps<const SCALE: i32>(src: __m256, slice: *const f32, offsets: __m256i, mask: __m256) -> __m256 {
+pub unsafe fn _mm256_mask_i32gather_ps<const SCALE: i32>(src: __m256, slice: *const f32, offsets: __m256i, mask: __m256) -> __m256 {
     unsafe { let idx = lanes256_u32(offsets); let mut o = src.0; let mut i = 0; while i < 8 { if (i < 8 && ((mask.0[i].to_bits() as i32) < 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f32); } i += 1; } __m256(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_i32scatter_epi32<const SCALE: i32>(base_addr: *mut i32, k: __mmask8, vindex: __m256i, a: __m256i) {
+pub unsafe fn _mm256_mask_i32scatter_epi32<const SCALE: i32>(base_addr: *mut i32, k: __mmask8, vindex: __m256i, a: __m256i) {
     unsafe { let idx = lanes256_u32(vindex); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i32, lanes256_u32(a)[i] as i32); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_i32scatter_epi64<const SCALE: i32>(base_addr: *mut i64, k: __mmask8, vindex: __m128i, a: __m256i) {
+pub unsafe fn _mm256_mask_i32scatter_epi64<const SCALE: i32>(base_addr: *mut i64, k: __mmask8, vindex: __m128i, a: __m256i) {
     unsafe { let idx = lanes128_u32(vindex); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i64, lanes256_u64(a)[i] as i64); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_i32scatter_pd<const SCALE: i32>(base_addr: *mut f64, k: __mmask8, vindex: __m128i, a: __m256d) {
+pub unsafe fn _mm256_mask_i32scatter_pd<const SCALE: i32>(base_addr: *mut f64, k: __mmask8, vindex: __m128i, a: __m256d) {
     unsafe { let idx = lanes128_u32(vindex); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f64, a.0[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_i32scatter_ps<const SCALE: i32>(base_addr: *mut f32, k: __mmask8, vindex: __m256i, a: __m256) {
+pub unsafe fn _mm256_mask_i32scatter_ps<const SCALE: i32>(base_addr: *mut f32, k: __mmask8, vindex: __m256i, a: __m256) {
     unsafe { let idx = lanes256_u32(vindex); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f32, a.0[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_mask_i64gather_epi32<const SCALE: i32>(src: __m128i, slice: *const i32, offsets: __m256i, mask: __m128i) -> __m128i {
+pub unsafe fn _mm256_mask_i64gather_epi32<const SCALE: i32>(src: __m128i, slice: *const i32, offsets: __m256i, mask: __m128i) -> __m128i {
     unsafe { let idx = lanes256_u64(offsets); let m = lanes128_u32(mask); let mut o = lanes128_u32(src); let mut i = 0; while i < 4 { if (i < 4 && (((m[i] as i32) < 0))) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i32) as u32; } i += 1; } from128_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_mask_i64gather_epi64<const SCALE: i32>(src: __m256i, slice: *const i64, offsets: __m256i, mask: __m256i) -> __m256i {
+pub unsafe fn _mm256_mask_i64gather_epi64<const SCALE: i32>(src: __m256i, slice: *const i64, offsets: __m256i, mask: __m256i) -> __m256i {
     unsafe { let idx = lanes256_u64(offsets); let m = lanes256_u64(mask); let mut o = lanes256_u64(src); let mut i = 0; while i < 4 { if (i < 4 && (((m[i] as i64) < 0))) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i64) as u64; } i += 1; } from256_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm256_mask_i64gather_ps<const SCALE: i32>(src: __m128, slice: *const f32, offsets: __m256i, mask: __m128) -> __m128 {
+pub unsafe fn _mm256_mask_i64gather_ps<const SCALE: i32>(src: __m128, slice: *const f32, offsets: __m256i, mask: __m128) -> __m128 {
     unsafe { let idx = lanes256_u64(offsets); let mut o = src.0; let mut i = 0; while i < 4 { if (i < 4 && ((mask.0[i].to_bits() as i32) < 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f32); } i += 1; } __m128(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_i64scatter_epi32<const SCALE: i32>(base_addr: *mut i32, k: __mmask8, vindex: __m256i, a: __m128i) {
+pub unsafe fn _mm256_mask_i64scatter_epi32<const SCALE: i32>(base_addr: *mut i32, k: __mmask8, vindex: __m256i, a: __m128i) {
     unsafe { let idx = lanes256_u64(vindex); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i32, lanes128_u32(a)[i] as i32); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_i64scatter_epi64<const SCALE: i32>(base_addr: *mut i64, k: __mmask8, vindex: __m256i, a: __m256i) {
+pub unsafe fn _mm256_mask_i64scatter_epi64<const SCALE: i32>(base_addr: *mut i64, k: __mmask8, vindex: __m256i, a: __m256i) {
     unsafe { let idx = lanes256_u64(vindex); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i64, lanes256_u64(a)[i] as i64); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_i64scatter_pd<const SCALE: i32>(base_addr: *mut f64, k: __mmask8, vindex: __m256i, a: __m256d) {
+pub unsafe fn _mm256_mask_i64scatter_pd<const SCALE: i32>(base_addr: *mut f64, k: __mmask8, vindex: __m256i, a: __m256d) {
     unsafe { let idx = lanes256_u64(vindex); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f64, a.0[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_i64scatter_ps<const SCALE: i32>(base_addr: *mut f32, k: __mmask8, vindex: __m256i, a: __m128) {
+pub unsafe fn _mm256_mask_i64scatter_ps<const SCALE: i32>(base_addr: *mut f32, k: __mmask8, vindex: __m256i, a: __m128) {
     unsafe { let idx = lanes256_u64(vindex); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f32, a.0[i]); } i += 1; } }
 }
 
@@ -37006,63 +37006,43 @@ pub fn _mm256_mask_inserti64x2<const IMM8: i32>(src: __m256i, k: __mmask8, a: __
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_load_epi32(src: __m256i, k: __mmask8, mem_addr: *const i32) -> __m256i {
-    unsafe { let r = lanes256_u32(crate::ptr::read_unaligned(mem_addr as *const __m256i)); let s = lanes256_u32(src); let mut o = [0u32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from256_u32(o) }
-}
+pub unsafe fn _mm256_mask_load_epi32(src: __m256i, k: __mmask8, mem_addr: *const i32) -> __m256i { unsafe { let s = lanes256_u32(src); let mut o = [0u32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const u32) } else { s[i] }; i += 1; } from256_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_load_epi64(src: __m256i, k: __mmask8, mem_addr: *const i64) -> __m256i {
-    unsafe { let r = lanes256_u64(crate::ptr::read_unaligned(mem_addr as *const __m256i)); let s = lanes256_u64(src); let mut o = [0u64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from256_u64(o) }
-}
+pub unsafe fn _mm256_mask_load_epi64(src: __m256i, k: __mmask8, mem_addr: *const i64) -> __m256i { unsafe { let s = lanes256_u64(src); let mut o = [0u64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const u64) } else { s[i] }; i += 1; } from256_u64(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_load_pd(src: __m256d, k: __mmask8, mem_addr: *const f64) -> __m256d {
-    unsafe { let r = (_mm256_load_pd(mem_addr)).0; let s = src.0; let mut o = [0.0f64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m256d(o) }
-}
+pub unsafe fn _mm256_mask_load_pd(src: __m256d, k: __mmask8, mem_addr: *const f64) -> __m256d { unsafe { let s = src.0; let mut o = [0.0f64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const f64) } else { s[i] }; i += 1; } __m256d(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_load_ps(src: __m256, k: __mmask8, mem_addr: *const f32) -> __m256 {
-    unsafe { let r = (_mm256_load_ps(mem_addr)).0; let s = src.0; let mut o = [0.0f32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m256(o) }
-}
+pub unsafe fn _mm256_mask_load_ps(src: __m256, k: __mmask8, mem_addr: *const f32) -> __m256 { unsafe { let s = src.0; let mut o = [0.0f32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const f32) } else { s[i] }; i += 1; } __m256(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm256_mask_loadu_epi16(src: __m256i, k: __mmask16, mem_addr: *const i16) -> __m256i {
-    unsafe { let r = lanes256_u16(crate::ptr::read_unaligned(mem_addr as *const __m256i)); let s = lanes256_u16(src); let mut o = [0u16; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from256_u16(o) }
-}
+pub unsafe fn _mm256_mask_loadu_epi16(src: __m256i, k: __mmask16, mem_addr: *const i16) -> __m256i { unsafe { let s = lanes256_u16(src); let mut o = [0u16; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*2) as *const u16) } else { s[i] }; i += 1; } from256_u16(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_loadu_epi32(src: __m256i, k: __mmask8, mem_addr: *const i32) -> __m256i {
-    unsafe { let r = lanes256_u32(crate::ptr::read_unaligned(mem_addr as *const __m256i)); let s = lanes256_u32(src); let mut o = [0u32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from256_u32(o) }
-}
+pub unsafe fn _mm256_mask_loadu_epi32(src: __m256i, k: __mmask8, mem_addr: *const i32) -> __m256i { unsafe { let s = lanes256_u32(src); let mut o = [0u32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const u32) } else { s[i] }; i += 1; } from256_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_loadu_epi64(src: __m256i, k: __mmask8, mem_addr: *const i64) -> __m256i {
-    unsafe { let r = lanes256_u64(crate::ptr::read_unaligned(mem_addr as *const __m256i)); let s = lanes256_u64(src); let mut o = [0u64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from256_u64(o) }
-}
+pub unsafe fn _mm256_mask_loadu_epi64(src: __m256i, k: __mmask8, mem_addr: *const i64) -> __m256i { unsafe { let s = lanes256_u64(src); let mut o = [0u64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const u64) } else { s[i] }; i += 1; } from256_u64(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm256_mask_loadu_epi8(src: __m256i, k: __mmask32, mem_addr: *const i8) -> __m256i {
-    unsafe { let r = lanes256_u8(crate::ptr::read_unaligned(mem_addr as *const __m256i)); let s = lanes256_u8(src); let mut o = [0u8; 32]; let mut i = 0; while i < 32 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from256_u8(o) }
-}
+pub unsafe fn _mm256_mask_loadu_epi8(src: __m256i, k: __mmask32, mem_addr: *const i8) -> __m256i { unsafe { let s = lanes256_u8(src); let mut o = [0u8; 32]; let mut i = 0; while i < 32 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*1) as *const u8) } else { s[i] }; i += 1; } from256_u8(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_loadu_pd(src: __m256d, k: __mmask8, mem_addr: *const f64) -> __m256d {
-    unsafe { let r = (_mm256_loadu_pd(mem_addr)).0; let s = src.0; let mut o = [0.0f64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m256d(o) }
-}
+pub unsafe fn _mm256_mask_loadu_pd(src: __m256d, k: __mmask8, mem_addr: *const f64) -> __m256d { unsafe { let s = src.0; let mut o = [0.0f64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const f64) } else { s[i] }; i += 1; } __m256d(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_loadu_ps(src: __m256, k: __mmask8, mem_addr: *const f32) -> __m256 {
-    unsafe { let r = (_mm256_loadu_ps(mem_addr)).0; let s = src.0; let mut o = [0.0f32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m256(o) }
-}
+pub unsafe fn _mm256_mask_loadu_ps(src: __m256, k: __mmask8, mem_addr: *const f32) -> __m256 { unsafe { let s = src.0; let mut o = [0.0f32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const f32) } else { s[i] }; i += 1; } __m256(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512cd,avx512vl"))]
@@ -38073,61 +38053,61 @@ pub fn _mm256_mask_srlv_epi64(src: __m256i, k: __mmask8, a: __m256i, count: __m2
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_store_epi32(mem_addr: *mut i32, mask: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_store_epi32(mem_addr: *mut i32, mask: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u32(a); let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut u32, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_store_epi64(mem_addr: *mut i64, mask: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_store_epi64(mem_addr: *mut i64, mask: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*8) as *mut u64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_store_pd(mem_addr: *mut f64, mask: __mmask8, a: __m256d) {
+pub unsafe fn _mm256_mask_store_pd(mem_addr: *mut f64, mask: __mmask8, a: __m256d) {
     unsafe { let a = a.0; let mut i = 0; while i < 4 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*8) as *mut f64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_store_ps(mem_addr: *mut f32, mask: __mmask8, a: __m256) {
+pub unsafe fn _mm256_mask_store_ps(mem_addr: *mut f32, mask: __mmask8, a: __m256) {
     unsafe { let a = a.0; let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut f32, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm256_mask_storeu_epi16(mem_addr: *mut i16, mask: __mmask16, a: __m256i) {
+pub unsafe fn _mm256_mask_storeu_epi16(mem_addr: *mut i16, mask: __mmask16, a: __m256i) {
     unsafe { let a = lanes256_u16(a); let mut i = 0; while i < 16 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut u16, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_storeu_epi32(mem_addr: *mut i32, mask: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_storeu_epi32(mem_addr: *mut i32, mask: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u32(a); let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut u32, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_storeu_epi64(mem_addr: *mut i64, mask: __mmask8, a: __m256i) {
+pub unsafe fn _mm256_mask_storeu_epi64(mem_addr: *mut i64, mask: __mmask8, a: __m256i) {
     unsafe { let a = lanes256_u64(a); let mut i = 0; while i < 4 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*8) as *mut u64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm256_mask_storeu_epi8(mem_addr: *mut i8, mask: __mmask32, a: __m256i) {
+pub unsafe fn _mm256_mask_storeu_epi8(mem_addr: *mut i8, mask: __mmask32, a: __m256i) {
     unsafe { let a = lanes256_u8(a); let mut i = 0; while i < 32 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut u8, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_storeu_pd(mem_addr: *mut f64, mask: __mmask8, a: __m256d) {
+pub unsafe fn _mm256_mask_storeu_pd(mem_addr: *mut f64, mask: __mmask8, a: __m256d) {
     unsafe { let a = a.0; let mut i = 0; while i < 4 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*8) as *mut f64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mask_storeu_ps(mem_addr: *mut f32, mask: __mmask8, a: __m256) {
+pub unsafe fn _mm256_mask_storeu_ps(mem_addr: *mut f32, mask: __mmask8, a: __m256) {
     unsafe { let a = a.0; let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut f32, a[i]); } i += 1; } }
 }
 
@@ -39003,37 +38983,37 @@ pub fn _mm256_maskz_expand_ps(k: __mmask8, a: __m256) -> __m256 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2,avx512vl"))]
-pub fn _mm256_maskz_expandloadu_epi16(k: __mmask16, mem_addr: *const i16) -> __m256i {
+pub unsafe fn _mm256_maskz_expandloadu_epi16(k: __mmask16, mem_addr: *const i16) -> __m256i {
     unsafe { let s = [0u16; 16]; let mut o = [0u16; 16]; let mut i = 0; let mut j = 0usize; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*2) as *const u16); j += 1; v } else { s[i] }; i += 1; } from256_u16(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_maskz_expandloadu_epi32(k: __mmask8, mem_addr: *const i32) -> __m256i {
+pub unsafe fn _mm256_maskz_expandloadu_epi32(k: __mmask8, mem_addr: *const i32) -> __m256i {
     unsafe { let s = [0u32; 8]; let mut o = [0u32; 8]; let mut i = 0; let mut j = 0usize; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*4) as *const u32); j += 1; v } else { s[i] }; i += 1; } from256_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_maskz_expandloadu_epi64(k: __mmask8, mem_addr: *const i64) -> __m256i {
+pub unsafe fn _mm256_maskz_expandloadu_epi64(k: __mmask8, mem_addr: *const i64) -> __m256i {
     unsafe { let s = [0u64; 4]; let mut o = [0u64; 4]; let mut i = 0; let mut j = 0usize; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*8) as *const u64); j += 1; v } else { s[i] }; i += 1; } from256_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2,avx512vl"))]
-pub fn _mm256_maskz_expandloadu_epi8(k: __mmask32, mem_addr: *const i8) -> __m256i {
+pub unsafe fn _mm256_maskz_expandloadu_epi8(k: __mmask32, mem_addr: *const i8) -> __m256i {
     unsafe { let s = [0u8; 32]; let mut o = [0u8; 32]; let mut i = 0; let mut j = 0usize; while i < 32 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*1) as *const u8); j += 1; v } else { s[i] }; i += 1; } from256_u8(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_maskz_expandloadu_pd(k: __mmask8, mem_addr: *const f64) -> __m256d {
+pub unsafe fn _mm256_maskz_expandloadu_pd(k: __mmask8, mem_addr: *const f64) -> __m256d {
     unsafe { let s = [0.0f64; 4]; let mut o = [0.0f64; 4]; let mut i = 0; let mut j = 0usize; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*8) as *const f64); j += 1; v } else { s[i] }; i += 1; } __m256d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_maskz_expandloadu_ps(k: __mmask8, mem_addr: *const f32) -> __m256 {
+pub unsafe fn _mm256_maskz_expandloadu_ps(k: __mmask8, mem_addr: *const f32) -> __m256 {
     unsafe { let s = [0.0f32; 8]; let mut o = [0.0f32; 8]; let mut i = 0; let mut j = 0usize; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*4) as *const f32); j += 1; v } else { s[i] }; i += 1; } __m256(o) }
 }
 
@@ -39195,63 +39175,43 @@ pub fn _mm256_maskz_inserti64x2<const IMM8: i32>(k: __mmask8, a: __m256i, b: __m
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_maskz_load_epi32(k: __mmask8, mem_addr: *const i32) -> __m256i {
-    unsafe { let r = lanes256_u32(crate::ptr::read_unaligned(mem_addr as *const __m256i)); let s = [0u32; 8]; let mut o = [0u32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from256_u32(o) }
-}
+pub unsafe fn _mm256_maskz_load_epi32(k: __mmask8, mem_addr: *const i32) -> __m256i { unsafe { let mut o = [0u32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const u32) } else { 0u32 }; i += 1; } from256_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_maskz_load_epi64(k: __mmask8, mem_addr: *const i64) -> __m256i {
-    unsafe { let r = lanes256_u64(crate::ptr::read_unaligned(mem_addr as *const __m256i)); let s = [0u64; 4]; let mut o = [0u64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from256_u64(o) }
-}
+pub unsafe fn _mm256_maskz_load_epi64(k: __mmask8, mem_addr: *const i64) -> __m256i { unsafe { let mut o = [0u64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const u64) } else { 0u64 }; i += 1; } from256_u64(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_maskz_load_pd(k: __mmask8, mem_addr: *const f64) -> __m256d {
-    unsafe { let r = (_mm256_load_pd(mem_addr)).0; let s = [0.0; 4]; let mut o = [0.0f64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m256d(o) }
-}
+pub unsafe fn _mm256_maskz_load_pd(k: __mmask8, mem_addr: *const f64) -> __m256d { unsafe { let mut o = [0.0f64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const f64) } else { 0.0f64 }; i += 1; } __m256d(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_maskz_load_ps(k: __mmask8, mem_addr: *const f32) -> __m256 {
-    unsafe { let r = (_mm256_load_ps(mem_addr)).0; let s = [0.0; 8]; let mut o = [0.0f32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m256(o) }
-}
+pub unsafe fn _mm256_maskz_load_ps(k: __mmask8, mem_addr: *const f32) -> __m256 { unsafe { let mut o = [0.0f32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const f32) } else { 0.0f32 }; i += 1; } __m256(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm256_maskz_loadu_epi16(k: __mmask16, mem_addr: *const i16) -> __m256i {
-    unsafe { let r = lanes256_u16(crate::ptr::read_unaligned(mem_addr as *const __m256i)); let s = [0u16; 16]; let mut o = [0u16; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from256_u16(o) }
-}
+pub unsafe fn _mm256_maskz_loadu_epi16(k: __mmask16, mem_addr: *const i16) -> __m256i { unsafe { let mut o = [0u16; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*2) as *const u16) } else { 0u16 }; i += 1; } from256_u16(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_maskz_loadu_epi32(k: __mmask8, mem_addr: *const i32) -> __m256i {
-    unsafe { let r = lanes256_u32(crate::ptr::read_unaligned(mem_addr as *const __m256i)); let s = [0u32; 8]; let mut o = [0u32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from256_u32(o) }
-}
+pub unsafe fn _mm256_maskz_loadu_epi32(k: __mmask8, mem_addr: *const i32) -> __m256i { unsafe { let mut o = [0u32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const u32) } else { 0u32 }; i += 1; } from256_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_maskz_loadu_epi64(k: __mmask8, mem_addr: *const i64) -> __m256i {
-    unsafe { let r = lanes256_u64(crate::ptr::read_unaligned(mem_addr as *const __m256i)); let s = [0u64; 4]; let mut o = [0u64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from256_u64(o) }
-}
+pub unsafe fn _mm256_maskz_loadu_epi64(k: __mmask8, mem_addr: *const i64) -> __m256i { unsafe { let mut o = [0u64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const u64) } else { 0u64 }; i += 1; } from256_u64(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm256_maskz_loadu_epi8(k: __mmask32, mem_addr: *const i8) -> __m256i {
-    unsafe { let r = lanes256_u8(crate::ptr::read_unaligned(mem_addr as *const __m256i)); let s = [0u8; 32]; let mut o = [0u8; 32]; let mut i = 0; while i < 32 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from256_u8(o) }
-}
+pub unsafe fn _mm256_maskz_loadu_epi8(k: __mmask32, mem_addr: *const i8) -> __m256i { unsafe { let mut o = [0u8; 32]; let mut i = 0; while i < 32 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*1) as *const u8) } else { 0u8 }; i += 1; } from256_u8(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_maskz_loadu_pd(k: __mmask8, mem_addr: *const f64) -> __m256d {
-    unsafe { let r = (_mm256_loadu_pd(mem_addr)).0; let s = [0.0; 4]; let mut o = [0.0f64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m256d(o) }
-}
+pub unsafe fn _mm256_maskz_loadu_pd(k: __mmask8, mem_addr: *const f64) -> __m256d { unsafe { let mut o = [0.0f64; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const f64) } else { 0.0f64 }; i += 1; } __m256d(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_maskz_loadu_ps(k: __mmask8, mem_addr: *const f32) -> __m256 {
-    unsafe { let r = (_mm256_loadu_ps(mem_addr)).0; let s = [0.0; 8]; let mut o = [0.0f32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m256(o) }
-}
+pub unsafe fn _mm256_maskz_loadu_ps(k: __mmask8, mem_addr: *const f32) -> __m256 { unsafe { let mut o = [0.0f32; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const f32) } else { 0.0f32 }; i += 1; } __m256(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512cd,avx512vl"))]
@@ -41097,37 +41057,37 @@ pub fn _mm512_mask_cmpunord_ps_mask(k1: __mmask16, a: __m512, b: __m512) -> __mm
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2"))]
-pub fn _mm512_mask_compressstoreu_epi16(base_addr: *mut i16, k: __mmask32, a: __m512i) {
+pub unsafe fn _mm512_mask_compressstoreu_epi16(base_addr: *mut i16, k: __mmask32, a: __m512i) {
     unsafe { let a = lanes512_u16(a); let mut j = 0usize; let mut i = 0; while i < 32 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*2) as *mut u16, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_compressstoreu_epi32(base_addr: *mut i32, k: __mmask16, a: __m512i) {
+pub unsafe fn _mm512_mask_compressstoreu_epi32(base_addr: *mut i32, k: __mmask16, a: __m512i) {
     unsafe { let a = lanes512_u32(a); let mut j = 0usize; let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*4) as *mut u32, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_compressstoreu_epi64(base_addr: *mut i64, k: __mmask8, a: __m512i) {
+pub unsafe fn _mm512_mask_compressstoreu_epi64(base_addr: *mut i64, k: __mmask8, a: __m512i) {
     unsafe { let a = lanes512_u64(a); let mut j = 0usize; let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*8) as *mut u64, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2"))]
-pub fn _mm512_mask_compressstoreu_epi8(base_addr: *mut i8, k: __mmask64, a: __m512i) {
+pub unsafe fn _mm512_mask_compressstoreu_epi8(base_addr: *mut i8, k: __mmask64, a: __m512i) {
     unsafe { let a = lanes512_u8(a); let mut j = 0usize; let mut i = 0; while i < 64 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*1) as *mut u8, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_compressstoreu_pd(base_addr: *mut f64, k: __mmask8, a: __m512d) {
+pub unsafe fn _mm512_mask_compressstoreu_pd(base_addr: *mut f64, k: __mmask8, a: __m512d) {
     unsafe { let a = a.0; let mut j = 0usize; let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*8) as *mut f64, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_compressstoreu_ps(base_addr: *mut f32, k: __mmask16, a: __m512) {
+pub unsafe fn _mm512_mask_compressstoreu_ps(base_addr: *mut f32, k: __mmask16, a: __m512) {
     unsafe { let a = a.0; let mut j = 0usize; let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*4) as *mut f32, a[i]); j += 1; } i += 1; } }
 }
 
@@ -41259,7 +41219,7 @@ pub fn _mm512_mask_cvtepi16_epi8(src: __m256i, k: __mmask32, a: __m512i) -> __m2
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _mm512_mask_cvtepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask32, a: __m512i) {
+pub unsafe fn _mm512_mask_cvtepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask32, a: __m512i) {
     unsafe { let a = lanes512_u16(a); let mut i = 0; while i < 32 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut u8, a[i] as u8); } i += 1; } }
 }
 
@@ -41295,13 +41255,13 @@ pub fn _mm512_mask_cvtepi32_ps(src: __m512, k: __mmask16, a: __m512i) -> __m512 
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask16, a: __m512i) {
+pub unsafe fn _mm512_mask_cvtepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask16, a: __m512i) {
     unsafe { let a = lanes512_u32(a); let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut u16, a[i] as u16); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask16, a: __m512i) {
+pub unsafe fn _mm512_mask_cvtepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask16, a: __m512i) {
     unsafe { let a = lanes512_u32(a); let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut u8, a[i] as u8); } i += 1; } }
 }
 
@@ -41343,19 +41303,19 @@ pub fn _mm512_mask_cvtepi64_ps(src: __m256, k: __mmask8, a: __m512i) -> __m256 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m512i) {
+pub unsafe fn _mm512_mask_cvtepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m512i) {
     unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut u16, a[i] as u16); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m512i) {
+pub unsafe fn _mm512_mask_cvtepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m512i) {
     unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut u32, a[i] as u32); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m512i) {
+pub unsafe fn _mm512_mask_cvtepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m512i) {
     unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut u8, a[i] as u8); } i += 1; } }
 }
 
@@ -41527,7 +41487,7 @@ pub fn _mm512_mask_cvtsepi16_epi8(src: __m256i, k: __mmask32, a: __m512i) -> __m
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _mm512_mask_cvtsepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask32, a: __m512i) {
+pub unsafe fn _mm512_mask_cvtsepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask32, a: __m512i) {
     unsafe { let a = lanes512_u16(a); let mut i = 0; while i < 32 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i] as i16; if v > i8::MAX as i16 { i8::MAX } else if v < i8::MIN as i16 { i8::MIN } else { v as i8 } }); } i += 1; } }
 }
 
@@ -41545,13 +41505,13 @@ pub fn _mm512_mask_cvtsepi32_epi8(src: __m128i, k: __mmask16, a: __m512i) -> __m
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtsepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask16, a: __m512i) {
+pub unsafe fn _mm512_mask_cvtsepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask16, a: __m512i) {
     unsafe { let a = lanes512_u32(a); let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i] as i32; if v > i16::MAX as i32 { i16::MAX } else if v < i16::MIN as i32 { i16::MIN } else { v as i16 } }); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtsepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask16, a: __m512i) {
+pub unsafe fn _mm512_mask_cvtsepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask16, a: __m512i) {
     unsafe { let a = lanes512_u32(a); let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i] as i32; if v > i8::MAX as i32 { i8::MAX } else if v < i8::MIN as i32 { i8::MIN } else { v as i8 } }); } i += 1; } }
 }
 
@@ -41575,19 +41535,19 @@ pub fn _mm512_mask_cvtsepi64_epi8(src: __m128i, k: __mmask8, a: __m512i) -> __m1
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtsepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m512i) {
+pub unsafe fn _mm512_mask_cvtsepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m512i) {
     unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i] as i64; if v > i16::MAX as i64 { i16::MAX } else if v < i16::MIN as i64 { i16::MIN } else { v as i16 } }); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtsepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m512i) {
+pub unsafe fn _mm512_mask_cvtsepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m512i) {
     unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut i32, { let v = a[i] as i64; if v > i32::MAX as i64 { i32::MAX } else if v < i32::MIN as i64 { i32::MIN } else { v as i32 } }); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtsepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m512i) {
+pub unsafe fn _mm512_mask_cvtsepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m512i) {
     unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i] as i64; if v > i8::MAX as i64 { i8::MAX } else if v < i8::MIN as i64 { i8::MIN } else { v as i8 } }); } i += 1; } }
 }
 
@@ -41695,7 +41655,7 @@ pub fn _mm512_mask_cvtusepi16_epi8(src: __m256i, k: __mmask32, a: __m512i) -> __
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _mm512_mask_cvtusepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask32, a: __m512i) { unsafe { let a = lanes512_u16(a); let mut i = 0; while i < 32 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u16 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
+pub unsafe fn _mm512_mask_cvtusepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask32, a: __m512i) { unsafe { let a = lanes512_u16(a); let mut i = 0; while i < 32 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u16 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
@@ -41711,11 +41671,11 @@ pub fn _mm512_mask_cvtusepi32_epi8(src: __m128i, k: __mmask16, a: __m512i) -> __
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtusepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask16, a: __m512i) { unsafe { let a = lanes512_u32(a); let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i]; if v > u16::MAX as u32 { u16::MAX as i16 } else { v as i16 } }); } i += 1; } } }
+pub unsafe fn _mm512_mask_cvtusepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask16, a: __m512i) { unsafe { let a = lanes512_u32(a); let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i]; if v > u16::MAX as u32 { u16::MAX as i16 } else { v as i16 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtusepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask16, a: __m512i) { unsafe { let a = lanes512_u32(a); let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u32 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
+pub unsafe fn _mm512_mask_cvtusepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask16, a: __m512i) { unsafe { let a = lanes512_u32(a); let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u32 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
@@ -41737,15 +41697,15 @@ pub fn _mm512_mask_cvtusepi64_epi8(src: __m128i, k: __mmask8, a: __m512i) -> __m
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtusepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m512i) { unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i]; if v > u16::MAX as u64 { u16::MAX as i16 } else { v as i16 } }); } i += 1; } } }
+pub unsafe fn _mm512_mask_cvtusepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m512i) { unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i]; if v > u16::MAX as u64 { u16::MAX as i16 } else { v as i16 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtusepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m512i) { unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut i32, { let v = a[i]; if v > u32::MAX as u64 { u32::MAX as i32 } else { v as i32 } }); } i += 1; } } }
+pub unsafe fn _mm512_mask_cvtusepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m512i) { unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut i32, { let v = a[i]; if v > u32::MAX as u64 { u32::MAX as i32 } else { v as i32 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_cvtusepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m512i) { unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u64 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
+pub unsafe fn _mm512_mask_cvtusepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m512i) { unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u64 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
@@ -41839,37 +41799,37 @@ pub fn _mm512_mask_expand_ps(src: __m512, k: __mmask16, a: __m512) -> __m512 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2"))]
-pub fn _mm512_mask_expandloadu_epi16(src: __m512i, k: __mmask32, mem_addr: *const i16) -> __m512i {
+pub unsafe fn _mm512_mask_expandloadu_epi16(src: __m512i, k: __mmask32, mem_addr: *const i16) -> __m512i {
     unsafe { let s = lanes512_u16(src); let mut o = [0u16; 32]; let mut i = 0; let mut j = 0usize; while i < 32 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*2) as *const u16); j += 1; v } else { s[i] }; i += 1; } from512_u16(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_expandloadu_epi32(src: __m512i, k: __mmask16, mem_addr: *const i32) -> __m512i {
+pub unsafe fn _mm512_mask_expandloadu_epi32(src: __m512i, k: __mmask16, mem_addr: *const i32) -> __m512i {
     unsafe { let s = lanes512_u32(src); let mut o = [0u32; 16]; let mut i = 0; let mut j = 0usize; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*4) as *const u32); j += 1; v } else { s[i] }; i += 1; } from512_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_expandloadu_epi64(src: __m512i, k: __mmask8, mem_addr: *const i64) -> __m512i {
+pub unsafe fn _mm512_mask_expandloadu_epi64(src: __m512i, k: __mmask8, mem_addr: *const i64) -> __m512i {
     unsafe { let s = lanes512_u64(src); let mut o = [0u64; 8]; let mut i = 0; let mut j = 0usize; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*8) as *const u64); j += 1; v } else { s[i] }; i += 1; } from512_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2"))]
-pub fn _mm512_mask_expandloadu_epi8(src: __m512i, k: __mmask64, mem_addr: *const i8) -> __m512i {
+pub unsafe fn _mm512_mask_expandloadu_epi8(src: __m512i, k: __mmask64, mem_addr: *const i8) -> __m512i {
     unsafe { let s = lanes512_u8(src); let mut o = [0u8; 64]; let mut i = 0; let mut j = 0usize; while i < 64 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*1) as *const u8); j += 1; v } else { s[i] }; i += 1; } from512_u8(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_expandloadu_pd(src: __m512d, k: __mmask8, mem_addr: *const f64) -> __m512d {
+pub unsafe fn _mm512_mask_expandloadu_pd(src: __m512d, k: __mmask8, mem_addr: *const f64) -> __m512d {
     unsafe { let s = src.0; let mut o = [0.0f64; 8]; let mut i = 0; let mut j = 0usize; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*8) as *const f64); j += 1; v } else { s[i] }; i += 1; } __m512d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_expandloadu_ps(src: __m512, k: __mmask16, mem_addr: *const f32) -> __m512 {
+pub unsafe fn _mm512_mask_expandloadu_ps(src: __m512, k: __mmask16, mem_addr: *const f32) -> __m512 {
     unsafe { let s = src.0; let mut o = [0.0f32; 16]; let mut i = 0; let mut j = 0usize; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*4) as *const f32); j += 1; v } else { s[i] }; i += 1; } __m512(o) }
 }
 
@@ -42151,121 +42111,121 @@ pub fn _mm512_mask_getmant_round_ps<const NORM: i32, const SIGN: i32, const SAE:
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i32gather_epi32<const SCALE: i32>(src: __m512i, mask: __mmask16, offsets: __m512i, slice: *const i32) -> __m512i {
+pub unsafe fn _mm512_mask_i32gather_epi32<const SCALE: i32>(src: __m512i, mask: __mmask16, offsets: __m512i, slice: *const i32) -> __m512i {
     unsafe { let idx = lanes512_u32(offsets); let mut o = lanes512_u32(src); let mut i = 0; while i < 16 { if (i < 16 && (((mask as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i32) as u32; } i += 1; } from512_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i32gather_epi64<const SCALE: i32>(src: __m512i, mask: __mmask8, offsets: __m256i, slice: *const i64) -> __m512i {
+pub unsafe fn _mm512_mask_i32gather_epi64<const SCALE: i32>(src: __m512i, mask: __mmask8, offsets: __m256i, slice: *const i64) -> __m512i {
     unsafe { let idx = lanes256_u32(offsets); let mut o = lanes512_u64(src); let mut i = 0; while i < 8 { if (i < 8 && (((mask as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i64) as u64; } i += 1; } from512_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i32gather_pd<const SCALE: i32>(src: __m512d, mask: __mmask8, offsets: __m256i, slice: *const f64) -> __m512d {
+pub unsafe fn _mm512_mask_i32gather_pd<const SCALE: i32>(src: __m512d, mask: __mmask8, offsets: __m256i, slice: *const f64) -> __m512d {
     unsafe { let idx = lanes256_u32(offsets); let mut o = src.0; let mut i = 0; while i < 8 { if (i < 8 && (((mask as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f64); } i += 1; } __m512d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i32gather_ps<const SCALE: i32>(src: __m512, mask: __mmask16, offsets: __m512i, slice: *const f32) -> __m512 {
+pub unsafe fn _mm512_mask_i32gather_ps<const SCALE: i32>(src: __m512, mask: __mmask16, offsets: __m512i, slice: *const f32) -> __m512 {
     unsafe { let idx = lanes512_u32(offsets); let mut o = src.0; let mut i = 0; while i < 16 { if (i < 16 && (((mask as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f32); } i += 1; } __m512(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i32logather_epi64<const SCALE: i32>(src: __m512i, k: __mmask8, vindex: __m512i, base_addr: *const i64) -> __m512i {
+pub unsafe fn _mm512_mask_i32logather_epi64<const SCALE: i32>(src: __m512i, k: __mmask8, vindex: __m512i, base_addr: *const i64) -> __m512i {
     unsafe { let idx = lanes512_u32(vindex); let mut o = lanes512_u64(src); let mut i = 0; while i < 8 { if (i < 8 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i32 as i64) * (SCALE as i64)) as isize) as *const i64) as u64; } i += 1; } from512_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i32logather_pd<const SCALE: i32>(src: __m512d, k: __mmask8, vindex: __m512i, base_addr: *const f64) -> __m512d {
+pub unsafe fn _mm512_mask_i32logather_pd<const SCALE: i32>(src: __m512d, k: __mmask8, vindex: __m512i, base_addr: *const f64) -> __m512d {
     unsafe { let idx = lanes512_u32(vindex); let mut o = src.0; let mut i = 0; while i < 8 { if (i < 8 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i32 as i64) * (SCALE as i64)) as isize) as *const f64); } i += 1; } __m512d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i32loscatter_epi64<const SCALE: i32>(base_addr: *mut i64, k: __mmask8, vindex: __m512i, a: __m512i) {
+pub unsafe fn _mm512_mask_i32loscatter_epi64<const SCALE: i32>(base_addr: *mut i64, k: __mmask8, vindex: __m512i, a: __m512i) {
     unsafe { let idx = lanes512_u32(vindex); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i32 as i64) * (SCALE as i64)) as isize) as *mut i64, lanes512_u64(a)[i] as i64); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i32loscatter_pd<const SCALE: i32>(base_addr: *mut f64, k: __mmask8, vindex: __m512i, a: __m512d) {
+pub unsafe fn _mm512_mask_i32loscatter_pd<const SCALE: i32>(base_addr: *mut f64, k: __mmask8, vindex: __m512i, a: __m512d) {
     unsafe { let idx = lanes512_u32(vindex); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i32 as i64) * (SCALE as i64)) as isize) as *mut f64, a.0[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i32scatter_epi32<const SCALE: i32>(slice: *mut i32, mask: __mmask16, offsets: __m512i, src: __m512i) {
+pub unsafe fn _mm512_mask_i32scatter_epi32<const SCALE: i32>(slice: *mut i32, mask: __mmask16, offsets: __m512i, src: __m512i) {
     unsafe { let idx = lanes512_u32(offsets); let mut i = 0; while i < 16 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((slice as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i32, lanes512_u32(src)[i] as i32); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i32scatter_epi64<const SCALE: i32>(slice: *mut i64, mask: __mmask8, offsets: __m256i, src: __m512i) {
+pub unsafe fn _mm512_mask_i32scatter_epi64<const SCALE: i32>(slice: *mut i64, mask: __mmask8, offsets: __m256i, src: __m512i) {
     unsafe { let idx = lanes256_u32(offsets); let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((slice as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i64, lanes512_u64(src)[i] as i64); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i32scatter_pd<const SCALE: i32>(slice: *mut f64, mask: __mmask8, offsets: __m256i, src: __m512d) {
+pub unsafe fn _mm512_mask_i32scatter_pd<const SCALE: i32>(slice: *mut f64, mask: __mmask8, offsets: __m256i, src: __m512d) {
     unsafe { let idx = lanes256_u32(offsets); let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((slice as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f64, src.0[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i32scatter_ps<const SCALE: i32>(slice: *mut f32, mask: __mmask16, offsets: __m512i, src: __m512) {
+pub unsafe fn _mm512_mask_i32scatter_ps<const SCALE: i32>(slice: *mut f32, mask: __mmask16, offsets: __m512i, src: __m512) {
     unsafe { let idx = lanes512_u32(offsets); let mut i = 0; while i < 16 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((slice as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f32, src.0[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i64gather_epi32<const SCALE: i32>(src: __m256i, mask: __mmask8, offsets: __m512i, slice: *const i32) -> __m256i {
+pub unsafe fn _mm512_mask_i64gather_epi32<const SCALE: i32>(src: __m256i, mask: __mmask8, offsets: __m512i, slice: *const i32) -> __m256i {
     unsafe { let idx = lanes512_u64(offsets); let mut o = lanes256_u32(src); let mut i = 0; while i < 8 { if (i < 8 && (((mask as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i32) as u32; } i += 1; } from256_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i64gather_epi64<const SCALE: i32>(src: __m512i, mask: __mmask8, offsets: __m512i, slice: *const i64) -> __m512i {
+pub unsafe fn _mm512_mask_i64gather_epi64<const SCALE: i32>(src: __m512i, mask: __mmask8, offsets: __m512i, slice: *const i64) -> __m512i {
     unsafe { let idx = lanes512_u64(offsets); let mut o = lanes512_u64(src); let mut i = 0; while i < 8 { if (i < 8 && (((mask as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i64) as u64; } i += 1; } from512_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i64gather_pd<const SCALE: i32>(src: __m512d, mask: __mmask8, offsets: __m512i, slice: *const f64) -> __m512d {
+pub unsafe fn _mm512_mask_i64gather_pd<const SCALE: i32>(src: __m512d, mask: __mmask8, offsets: __m512i, slice: *const f64) -> __m512d {
     unsafe { let idx = lanes512_u64(offsets); let mut o = src.0; let mut i = 0; while i < 8 { if (i < 8 && (((mask as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f64); } i += 1; } __m512d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i64gather_ps<const SCALE: i32>(src: __m256, mask: __mmask8, offsets: __m512i, slice: *const f32) -> __m256 {
+pub unsafe fn _mm512_mask_i64gather_ps<const SCALE: i32>(src: __m256, mask: __mmask8, offsets: __m512i, slice: *const f32) -> __m256 {
     unsafe { let idx = lanes512_u64(offsets); let mut o = src.0; let mut i = 0; while i < 8 { if (i < 8 && (((mask as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f32); } i += 1; } __m256(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i64scatter_epi32<const SCALE: i32>(slice: *mut i32, mask: __mmask8, offsets: __m512i, src: __m256i) {
+pub unsafe fn _mm512_mask_i64scatter_epi32<const SCALE: i32>(slice: *mut i32, mask: __mmask8, offsets: __m512i, src: __m256i) {
     unsafe { let idx = lanes512_u64(offsets); let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((slice as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i32, lanes256_u32(src)[i] as i32); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i64scatter_epi64<const SCALE: i32>(slice: *mut i64, mask: __mmask8, offsets: __m512i, src: __m512i) {
+pub unsafe fn _mm512_mask_i64scatter_epi64<const SCALE: i32>(slice: *mut i64, mask: __mmask8, offsets: __m512i, src: __m512i) {
     unsafe { let idx = lanes512_u64(offsets); let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((slice as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i64, lanes512_u64(src)[i] as i64); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i64scatter_pd<const SCALE: i32>(slice: *mut f64, mask: __mmask8, offsets: __m512i, src: __m512d) {
+pub unsafe fn _mm512_mask_i64scatter_pd<const SCALE: i32>(slice: *mut f64, mask: __mmask8, offsets: __m512i, src: __m512d) {
     unsafe { let idx = lanes512_u64(offsets); let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((slice as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f64, src.0[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_i64scatter_ps<const SCALE: i32>(slice: *mut f32, mask: __mmask8, offsets: __m512i, src: __m256) {
+pub unsafe fn _mm512_mask_i64scatter_ps<const SCALE: i32>(slice: *mut f32, mask: __mmask8, offsets: __m512i, src: __m256) {
     unsafe { let idx = lanes512_u64(offsets); let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((slice as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f32, src.0[i]); } i += 1; } }
 }
 
@@ -42319,63 +42279,43 @@ pub fn _mm512_mask_inserti64x4<const IMM8: i32>(src: __m512i, k: __mmask8, a: __
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_load_epi32(src: __m512i, k: __mmask16, mem_addr: *const i32) -> __m512i {
-    unsafe { let r = lanes512_u32(crate::ptr::read_unaligned(mem_addr as *const __m512i)); let s = lanes512_u32(src); let mut o = [0u32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from512_u32(o) }
-}
+pub unsafe fn _mm512_mask_load_epi32(src: __m512i, k: __mmask16, mem_addr: *const i32) -> __m512i { unsafe { let s = lanes512_u32(src); let mut o = [0u32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const u32) } else { s[i] }; i += 1; } from512_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_load_epi64(src: __m512i, k: __mmask8, mem_addr: *const i64) -> __m512i {
-    unsafe { let r = lanes512_u64(crate::ptr::read_unaligned(mem_addr as *const __m512i)); let s = lanes512_u64(src); let mut o = [0u64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from512_u64(o) }
-}
+pub unsafe fn _mm512_mask_load_epi64(src: __m512i, k: __mmask8, mem_addr: *const i64) -> __m512i { unsafe { let s = lanes512_u64(src); let mut o = [0u64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const u64) } else { s[i] }; i += 1; } from512_u64(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_load_pd(src: __m512d, k: __mmask8, mem_addr: *const f64) -> __m512d {
-    unsafe { let r = (crate::ptr::read_unaligned(mem_addr as *const __m512d)).0; let s = src.0; let mut o = [0.0f64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m512d(o) }
-}
+pub unsafe fn _mm512_mask_load_pd(src: __m512d, k: __mmask8, mem_addr: *const f64) -> __m512d { unsafe { let s = src.0; let mut o = [0.0f64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const f64) } else { s[i] }; i += 1; } __m512d(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_load_ps(src: __m512, k: __mmask16, mem_addr: *const f32) -> __m512 {
-    unsafe { let r = (crate::ptr::read_unaligned(mem_addr as *const __m512)).0; let s = src.0; let mut o = [0.0f32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m512(o) }
-}
+pub unsafe fn _mm512_mask_load_ps(src: __m512, k: __mmask16, mem_addr: *const f32) -> __m512 { unsafe { let s = src.0; let mut o = [0.0f32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const f32) } else { s[i] }; i += 1; } __m512(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _mm512_mask_loadu_epi16(src: __m512i, k: __mmask32, mem_addr: *const i16) -> __m512i {
-    unsafe { let r = lanes512_u16(crate::ptr::read_unaligned(mem_addr as *const __m512i)); let s = lanes512_u16(src); let mut o = [0u16; 32]; let mut i = 0; while i < 32 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from512_u16(o) }
-}
+pub unsafe fn _mm512_mask_loadu_epi16(src: __m512i, k: __mmask32, mem_addr: *const i16) -> __m512i { unsafe { let s = lanes512_u16(src); let mut o = [0u16; 32]; let mut i = 0; while i < 32 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*2) as *const u16) } else { s[i] }; i += 1; } from512_u16(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_loadu_epi32(src: __m512i, k: __mmask16, mem_addr: *const i32) -> __m512i {
-    unsafe { let r = lanes512_u32(crate::ptr::read_unaligned(mem_addr as *const __m512i)); let s = lanes512_u32(src); let mut o = [0u32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from512_u32(o) }
-}
+pub unsafe fn _mm512_mask_loadu_epi32(src: __m512i, k: __mmask16, mem_addr: *const i32) -> __m512i { unsafe { let s = lanes512_u32(src); let mut o = [0u32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const u32) } else { s[i] }; i += 1; } from512_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_loadu_epi64(src: __m512i, k: __mmask8, mem_addr: *const i64) -> __m512i {
-    unsafe { let r = lanes512_u64(crate::ptr::read_unaligned(mem_addr as *const __m512i)); let s = lanes512_u64(src); let mut o = [0u64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from512_u64(o) }
-}
+pub unsafe fn _mm512_mask_loadu_epi64(src: __m512i, k: __mmask8, mem_addr: *const i64) -> __m512i { unsafe { let s = lanes512_u64(src); let mut o = [0u64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const u64) } else { s[i] }; i += 1; } from512_u64(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _mm512_mask_loadu_epi8(src: __m512i, k: __mmask64, mem_addr: *const i8) -> __m512i {
-    unsafe { let r = lanes512_u8(crate::ptr::read_unaligned(mem_addr as *const __m512i)); let s = lanes512_u8(src); let mut o = [0u8; 64]; let mut i = 0; while i < 64 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from512_u8(o) }
-}
+pub unsafe fn _mm512_mask_loadu_epi8(src: __m512i, k: __mmask64, mem_addr: *const i8) -> __m512i { unsafe { let s = lanes512_u8(src); let mut o = [0u8; 64]; let mut i = 0; while i < 64 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*1) as *const u8) } else { s[i] }; i += 1; } from512_u8(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_loadu_pd(src: __m512d, k: __mmask8, mem_addr: *const f64) -> __m512d {
-    unsafe { let r = (crate::ptr::read_unaligned(mem_addr as *const __m512d)).0; let s = src.0; let mut o = [0.0f64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m512d(o) }
-}
+pub unsafe fn _mm512_mask_loadu_pd(src: __m512d, k: __mmask8, mem_addr: *const f64) -> __m512d { unsafe { let s = src.0; let mut o = [0.0f64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const f64) } else { s[i] }; i += 1; } __m512d(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_loadu_ps(src: __m512, k: __mmask16, mem_addr: *const f32) -> __m512 {
-    unsafe { let r = (crate::ptr::read_unaligned(mem_addr as *const __m512)).0; let s = src.0; let mut o = [0.0f32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m512(o) }
-}
+pub unsafe fn _mm512_mask_loadu_ps(src: __m512, k: __mmask16, mem_addr: *const f32) -> __m512 { unsafe { let s = src.0; let mut o = [0.0f32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const f32) } else { s[i] }; i += 1; } __m512(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512cd"))]
@@ -43526,55 +43466,55 @@ pub fn _mm512_mask_srlv_epi64(src: __m512i, k: __mmask8, a: __m512i, count: __m5
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_store_epi32(mem_addr: *mut i32, mask: __mmask16, a: __m512i) {
+pub unsafe fn _mm512_mask_store_epi32(mem_addr: *mut i32, mask: __mmask16, a: __m512i) {
     unsafe { let a = lanes512_u32(a); let mut i = 0; while i < 16 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut u32, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_store_epi64(mem_addr: *mut i64, mask: __mmask8, a: __m512i) {
+pub unsafe fn _mm512_mask_store_epi64(mem_addr: *mut i64, mask: __mmask8, a: __m512i) {
     unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*8) as *mut u64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_store_pd(mem_addr: *mut f64, mask: __mmask8, a: __m512d) {
+pub unsafe fn _mm512_mask_store_pd(mem_addr: *mut f64, mask: __mmask8, a: __m512d) {
     unsafe { let a = a.0; let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*8) as *mut f64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_store_ps(mem_addr: *mut f32, mask: __mmask16, a: __m512) {
+pub unsafe fn _mm512_mask_store_ps(mem_addr: *mut f32, mask: __mmask16, a: __m512) {
     unsafe { let a = a.0; let mut i = 0; while i < 16 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut f32, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _mm512_mask_storeu_epi16(mem_addr: *mut i16, mask: __mmask32, a: __m512i) {
+pub unsafe fn _mm512_mask_storeu_epi16(mem_addr: *mut i16, mask: __mmask32, a: __m512i) {
     unsafe { let a = lanes512_u16(a); let mut i = 0; while i < 32 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut u16, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_storeu_epi32(mem_addr: *mut i32, mask: __mmask16, a: __m512i) {
+pub unsafe fn _mm512_mask_storeu_epi32(mem_addr: *mut i32, mask: __mmask16, a: __m512i) {
     unsafe { let a = lanes512_u32(a); let mut i = 0; while i < 16 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut u32, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_storeu_epi64(mem_addr: *mut i64, mask: __mmask8, a: __m512i) {
+pub unsafe fn _mm512_mask_storeu_epi64(mem_addr: *mut i64, mask: __mmask8, a: __m512i) {
     unsafe { let a = lanes512_u64(a); let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*8) as *mut u64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _mm512_mask_storeu_epi8(mem_addr: *mut i8, mask: __mmask64, a: __m512i) {
+pub unsafe fn _mm512_mask_storeu_epi8(mem_addr: *mut i8, mask: __mmask64, a: __m512i) {
     unsafe { let a = lanes512_u8(a); let mut i = 0; while i < 64 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut u8, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_mask_storeu_pd(mem_addr: *mut f64, mask: __mmask8, a: __m512d) {
+pub unsafe fn _mm512_mask_storeu_pd(mem_addr: *mut f64, mask: __mmask8, a: __m512d) {
     unsafe { let a = a.0; let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*8) as *mut f64, a[i]); } i += 1; } }
 }
 
@@ -44660,37 +44600,37 @@ pub fn _mm512_maskz_expand_ps(k: __mmask16, a: __m512) -> __m512 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2"))]
-pub fn _mm512_maskz_expandloadu_epi16(k: __mmask32, mem_addr: *const i16) -> __m512i {
+pub unsafe fn _mm512_maskz_expandloadu_epi16(k: __mmask32, mem_addr: *const i16) -> __m512i {
     unsafe { let s = [0u16; 32]; let mut o = [0u16; 32]; let mut i = 0; let mut j = 0usize; while i < 32 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*2) as *const u16); j += 1; v } else { s[i] }; i += 1; } from512_u16(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_maskz_expandloadu_epi32(k: __mmask16, mem_addr: *const i32) -> __m512i {
+pub unsafe fn _mm512_maskz_expandloadu_epi32(k: __mmask16, mem_addr: *const i32) -> __m512i {
     unsafe { let s = [0u32; 16]; let mut o = [0u32; 16]; let mut i = 0; let mut j = 0usize; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*4) as *const u32); j += 1; v } else { s[i] }; i += 1; } from512_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_maskz_expandloadu_epi64(k: __mmask8, mem_addr: *const i64) -> __m512i {
+pub unsafe fn _mm512_maskz_expandloadu_epi64(k: __mmask8, mem_addr: *const i64) -> __m512i {
     unsafe { let s = [0u64; 8]; let mut o = [0u64; 8]; let mut i = 0; let mut j = 0usize; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*8) as *const u64); j += 1; v } else { s[i] }; i += 1; } from512_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2"))]
-pub fn _mm512_maskz_expandloadu_epi8(k: __mmask64, mem_addr: *const i8) -> __m512i {
+pub unsafe fn _mm512_maskz_expandloadu_epi8(k: __mmask64, mem_addr: *const i8) -> __m512i {
     unsafe { let s = [0u8; 64]; let mut o = [0u8; 64]; let mut i = 0; let mut j = 0usize; while i < 64 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*1) as *const u8); j += 1; v } else { s[i] }; i += 1; } from512_u8(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_maskz_expandloadu_pd(k: __mmask8, mem_addr: *const f64) -> __m512d {
+pub unsafe fn _mm512_maskz_expandloadu_pd(k: __mmask8, mem_addr: *const f64) -> __m512d {
     unsafe { let s = [0.0f64; 8]; let mut o = [0.0f64; 8]; let mut i = 0; let mut j = 0usize; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*8) as *const f64); j += 1; v } else { s[i] }; i += 1; } __m512d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_maskz_expandloadu_ps(k: __mmask16, mem_addr: *const f32) -> __m512 {
+pub unsafe fn _mm512_maskz_expandloadu_ps(k: __mmask16, mem_addr: *const f32) -> __m512 {
     unsafe { let s = [0.0f32; 16]; let mut o = [0.0f32; 16]; let mut i = 0; let mut j = 0usize; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*4) as *const f32); j += 1; v } else { s[i] }; i += 1; } __m512(o) }
 }
 
@@ -45008,63 +44948,43 @@ pub fn _mm512_maskz_inserti64x4<const IMM8: i32>(k: __mmask8, a: __m512i, b: __m
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_maskz_load_epi32(k: __mmask16, mem_addr: *const i32) -> __m512i {
-    unsafe { let r = lanes512_u32(crate::ptr::read_unaligned(mem_addr as *const __m512i)); let s = [0u32; 16]; let mut o = [0u32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from512_u32(o) }
-}
+pub unsafe fn _mm512_maskz_load_epi32(k: __mmask16, mem_addr: *const i32) -> __m512i { unsafe { let mut o = [0u32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const u32) } else { 0u32 }; i += 1; } from512_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_maskz_load_epi64(k: __mmask8, mem_addr: *const i64) -> __m512i {
-    unsafe { let r = lanes512_u64(crate::ptr::read_unaligned(mem_addr as *const __m512i)); let s = [0u64; 8]; let mut o = [0u64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from512_u64(o) }
-}
+pub unsafe fn _mm512_maskz_load_epi64(k: __mmask8, mem_addr: *const i64) -> __m512i { unsafe { let mut o = [0u64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const u64) } else { 0u64 }; i += 1; } from512_u64(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_maskz_load_pd(k: __mmask8, mem_addr: *const f64) -> __m512d {
-    unsafe { let r = (crate::ptr::read_unaligned(mem_addr as *const __m512d)).0; let s = [0.0; 8]; let mut o = [0.0f64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m512d(o) }
-}
+pub unsafe fn _mm512_maskz_load_pd(k: __mmask8, mem_addr: *const f64) -> __m512d { unsafe { let mut o = [0.0f64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const f64) } else { 0.0f64 }; i += 1; } __m512d(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_maskz_load_ps(k: __mmask16, mem_addr: *const f32) -> __m512 {
-    unsafe { let r = (crate::ptr::read_unaligned(mem_addr as *const __m512)).0; let s = [0.0; 16]; let mut o = [0.0f32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m512(o) }
-}
+pub unsafe fn _mm512_maskz_load_ps(k: __mmask16, mem_addr: *const f32) -> __m512 { unsafe { let mut o = [0.0f32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const f32) } else { 0.0f32 }; i += 1; } __m512(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _mm512_maskz_loadu_epi16(k: __mmask32, mem_addr: *const i16) -> __m512i {
-    unsafe { let r = lanes512_u16(crate::ptr::read_unaligned(mem_addr as *const __m512i)); let s = [0u16; 32]; let mut o = [0u16; 32]; let mut i = 0; while i < 32 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from512_u16(o) }
-}
+pub unsafe fn _mm512_maskz_loadu_epi16(k: __mmask32, mem_addr: *const i16) -> __m512i { unsafe { let mut o = [0u16; 32]; let mut i = 0; while i < 32 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*2) as *const u16) } else { 0u16 }; i += 1; } from512_u16(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_maskz_loadu_epi32(k: __mmask16, mem_addr: *const i32) -> __m512i {
-    unsafe { let r = lanes512_u32(crate::ptr::read_unaligned(mem_addr as *const __m512i)); let s = [0u32; 16]; let mut o = [0u32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from512_u32(o) }
-}
+pub unsafe fn _mm512_maskz_loadu_epi32(k: __mmask16, mem_addr: *const i32) -> __m512i { unsafe { let mut o = [0u32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const u32) } else { 0u32 }; i += 1; } from512_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_maskz_loadu_epi64(k: __mmask8, mem_addr: *const i64) -> __m512i {
-    unsafe { let r = lanes512_u64(crate::ptr::read_unaligned(mem_addr as *const __m512i)); let s = [0u64; 8]; let mut o = [0u64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from512_u64(o) }
-}
+pub unsafe fn _mm512_maskz_loadu_epi64(k: __mmask8, mem_addr: *const i64) -> __m512i { unsafe { let mut o = [0u64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const u64) } else { 0u64 }; i += 1; } from512_u64(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _mm512_maskz_loadu_epi8(k: __mmask64, mem_addr: *const i8) -> __m512i {
-    unsafe { let r = lanes512_u8(crate::ptr::read_unaligned(mem_addr as *const __m512i)); let s = [0u8; 64]; let mut o = [0u8; 64]; let mut i = 0; while i < 64 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from512_u8(o) }
-}
+pub unsafe fn _mm512_maskz_loadu_epi8(k: __mmask64, mem_addr: *const i8) -> __m512i { unsafe { let mut o = [0u8; 64]; let mut i = 0; while i < 64 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*1) as *const u8) } else { 0u8 }; i += 1; } from512_u8(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_maskz_loadu_pd(k: __mmask8, mem_addr: *const f64) -> __m512d {
-    unsafe { let r = (crate::ptr::read_unaligned(mem_addr as *const __m512d)).0; let s = [0.0; 8]; let mut o = [0.0f64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m512d(o) }
-}
+pub unsafe fn _mm512_maskz_loadu_pd(k: __mmask8, mem_addr: *const f64) -> __m512d { unsafe { let mut o = [0.0f64; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const f64) } else { 0.0f64 }; i += 1; } __m512d(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm512_maskz_loadu_ps(k: __mmask16, mem_addr: *const f32) -> __m512 {
-    unsafe { let r = (crate::ptr::read_unaligned(mem_addr as *const __m512)).0; let s = [0.0; 16]; let mut o = [0.0f32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m512(o) }
-}
+pub unsafe fn _mm512_maskz_loadu_ps(k: __mmask16, mem_addr: *const f32) -> __m512 { unsafe { let mut o = [0.0f32; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const f32) } else { 0.0f32 }; i += 1; } __m512(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512cd"))]
@@ -46891,37 +46811,37 @@ pub fn _mm_mask_cmpneq_epu8_mask(k1: __mmask16, a: __m128i, b: __m128i) -> __mma
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2,avx512vl"))]
-pub fn _mm_mask_compressstoreu_epi16(base_addr: *mut i16, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_compressstoreu_epi16(base_addr: *mut i16, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u16(a); let mut j = 0usize; let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*2) as *mut u16, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_compressstoreu_epi32(base_addr: *mut i32, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_compressstoreu_epi32(base_addr: *mut i32, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u32(a); let mut j = 0usize; let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*4) as *mut u32, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_compressstoreu_epi64(base_addr: *mut i64, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_compressstoreu_epi64(base_addr: *mut i64, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u64(a); let mut j = 0usize; let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*8) as *mut u64, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2,avx512vl"))]
-pub fn _mm_mask_compressstoreu_epi8(base_addr: *mut i8, k: __mmask16, a: __m128i) {
+pub unsafe fn _mm_mask_compressstoreu_epi8(base_addr: *mut i8, k: __mmask16, a: __m128i) {
     unsafe { let a = lanes128_u8(a); let mut j = 0usize; let mut i = 0; while i < 16 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*1) as *mut u8, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_compressstoreu_pd(base_addr: *mut f64, k: __mmask8, a: __m128d) {
+pub unsafe fn _mm_mask_compressstoreu_pd(base_addr: *mut f64, k: __mmask8, a: __m128d) {
     unsafe { let a = a.0; let mut j = 0usize; let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*8) as *mut f64, a[i]); j += 1; } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_compressstoreu_ps(base_addr: *mut f32, k: __mmask8, a: __m128) {
+pub unsafe fn _mm_mask_compressstoreu_ps(base_addr: *mut f32, k: __mmask8, a: __m128) {
     unsafe { let a = a.0; let mut j = 0usize; let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).add(j*4) as *mut f32, a[i]); j += 1; } i += 1; } }
 }
 
@@ -46969,7 +46889,7 @@ pub fn _mm_mask_cvtepi16_epi8(src: __m128i, k: __mmask8, a: __m128i) -> __m128i 
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm_mask_cvtepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_cvtepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u16(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut u8, a[i] as u8); } i += 1; } }
 }
 
@@ -47005,13 +46925,13 @@ pub fn _mm_mask_cvtepi32_ps(src: __m128, k: __mmask8, a: __m128i) -> __m128 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_cvtepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u32(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut u16, a[i] as u16); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_cvtepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u32(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut u8, a[i] as u8); } i += 1; } }
 }
 
@@ -47047,19 +46967,19 @@ pub fn _mm_mask_cvtepi64_ps(src: __m128, k: __mmask8, a: __m128i) -> __m128 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_cvtepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut u16, a[i] as u16); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_cvtepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut u32, a[i] as u32); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_cvtepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut u8, a[i] as u8); } i += 1; } }
 }
 
@@ -47209,7 +47129,7 @@ pub fn _mm_mask_cvtsepi16_epi8(src: __m128i, k: __mmask8, a: __m128i) -> __m128i
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm_mask_cvtsepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_cvtsepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u16(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i] as i16; if v > i8::MAX as i16 { i8::MAX } else if v < i8::MIN as i16 { i8::MIN } else { v as i8 } }); } i += 1; } }
 }
 
@@ -47227,13 +47147,13 @@ pub fn _mm_mask_cvtsepi32_epi8(src: __m128i, k: __mmask8, a: __m128i) -> __m128i
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtsepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_cvtsepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u32(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i] as i32; if v > i16::MAX as i32 { i16::MAX } else if v < i16::MIN as i32 { i16::MIN } else { v as i16 } }); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtsepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_cvtsepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u32(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i] as i32; if v > i8::MAX as i32 { i8::MAX } else if v < i8::MIN as i32 { i8::MIN } else { v as i8 } }); } i += 1; } }
 }
 
@@ -47257,19 +47177,19 @@ pub fn _mm_mask_cvtsepi64_epi8(src: __m128i, k: __mmask8, a: __m128i) -> __m128i
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtsepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_cvtsepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i] as i64; if v > i16::MAX as i64 { i16::MAX } else if v < i16::MIN as i64 { i16::MIN } else { v as i16 } }); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtsepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_cvtsepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut i32, { let v = a[i] as i64; if v > i32::MAX as i64 { i32::MAX } else if v < i32::MIN as i64 { i32::MIN } else { v as i32 } }); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtsepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_cvtsepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i] as i64; if v > i8::MAX as i64 { i8::MAX } else if v < i8::MIN as i64 { i8::MIN } else { v as i8 } }); } i += 1; } }
 }
 
@@ -47335,7 +47255,7 @@ pub fn _mm_mask_cvtusepi16_epi8(src: __m128i, k: __mmask8, a: __m128i) -> __m128
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm_mask_cvtusepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) { unsafe { let a = lanes128_u16(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u16 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
+pub unsafe fn _mm_mask_cvtusepi16_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) { unsafe { let a = lanes128_u16(a); let mut i = 0; while i < 8 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u16 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
@@ -47351,11 +47271,11 @@ pub fn _mm_mask_cvtusepi32_epi8(src: __m128i, k: __mmask8, a: __m128i) -> __m128
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtusepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m128i) { unsafe { let a = lanes128_u32(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i]; if v > u16::MAX as u32 { u16::MAX as i16 } else { v as i16 } }); } i += 1; } } }
+pub unsafe fn _mm_mask_cvtusepi32_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m128i) { unsafe { let a = lanes128_u32(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i]; if v > u16::MAX as u32 { u16::MAX as i16 } else { v as i16 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtusepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) { unsafe { let a = lanes128_u32(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u32 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
+pub unsafe fn _mm_mask_cvtusepi32_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) { unsafe { let a = lanes128_u32(a); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u32 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
@@ -47377,15 +47297,15 @@ pub fn _mm_mask_cvtusepi64_epi8(src: __m128i, k: __mmask8, a: __m128i) -> __m128
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtusepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m128i) { unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i]; if v > u16::MAX as u64 { u16::MAX as i16 } else { v as i16 } }); } i += 1; } } }
+pub unsafe fn _mm_mask_cvtusepi64_storeu_epi16(mem_addr: *mut i16, k: __mmask8, a: __m128i) { unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut i16, { let v = a[i]; if v > u16::MAX as u64 { u16::MAX as i16 } else { v as i16 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtusepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m128i) { unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut i32, { let v = a[i]; if v > u32::MAX as u64 { u32::MAX as i32 } else { v as i32 } }); } i += 1; } } }
+pub unsafe fn _mm_mask_cvtusepi64_storeu_epi32(mem_addr: *mut i32, k: __mmask8, a: __m128i) { unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut i32, { let v = a[i]; if v > u32::MAX as u64 { u32::MAX as i32 } else { v as i32 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_cvtusepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) { unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u64 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
+pub unsafe fn _mm_mask_cvtusepi64_storeu_epi8(mem_addr: *mut i8, k: __mmask8, a: __m128i) { unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut i8, { let v = a[i]; if v > u8::MAX as u64 { u8::MAX as i8 } else { v as i8 } }); } i += 1; } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
@@ -47491,37 +47411,37 @@ pub fn _mm_mask_expand_ps(src: __m128, k: __mmask8, a: __m128) -> __m128 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2,avx512vl"))]
-pub fn _mm_mask_expandloadu_epi16(src: __m128i, k: __mmask8, mem_addr: *const i16) -> __m128i {
+pub unsafe fn _mm_mask_expandloadu_epi16(src: __m128i, k: __mmask8, mem_addr: *const i16) -> __m128i {
     unsafe { let s = lanes128_u16(src); let mut o = [0u16; 8]; let mut i = 0; let mut j = 0usize; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*2) as *const u16); j += 1; v } else { s[i] }; i += 1; } from128_u16(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_expandloadu_epi32(src: __m128i, k: __mmask8, mem_addr: *const i32) -> __m128i {
+pub unsafe fn _mm_mask_expandloadu_epi32(src: __m128i, k: __mmask8, mem_addr: *const i32) -> __m128i {
     unsafe { let s = lanes128_u32(src); let mut o = [0u32; 4]; let mut i = 0; let mut j = 0usize; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*4) as *const u32); j += 1; v } else { s[i] }; i += 1; } from128_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_expandloadu_epi64(src: __m128i, k: __mmask8, mem_addr: *const i64) -> __m128i {
+pub unsafe fn _mm_mask_expandloadu_epi64(src: __m128i, k: __mmask8, mem_addr: *const i64) -> __m128i {
     unsafe { let s = lanes128_u64(src); let mut o = [0u64; 2]; let mut i = 0; let mut j = 0usize; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*8) as *const u64); j += 1; v } else { s[i] }; i += 1; } from128_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2,avx512vl"))]
-pub fn _mm_mask_expandloadu_epi8(src: __m128i, k: __mmask16, mem_addr: *const i8) -> __m128i {
+pub unsafe fn _mm_mask_expandloadu_epi8(src: __m128i, k: __mmask16, mem_addr: *const i8) -> __m128i {
     unsafe { let s = lanes128_u8(src); let mut o = [0u8; 16]; let mut i = 0; let mut j = 0usize; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*1) as *const u8); j += 1; v } else { s[i] }; i += 1; } from128_u8(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_expandloadu_pd(src: __m128d, k: __mmask8, mem_addr: *const f64) -> __m128d {
+pub unsafe fn _mm_mask_expandloadu_pd(src: __m128d, k: __mmask8, mem_addr: *const f64) -> __m128d {
     unsafe { let s = src.0; let mut o = [0.0f64; 2]; let mut i = 0; let mut j = 0usize; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*8) as *const f64); j += 1; v } else { s[i] }; i += 1; } __m128d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_expandloadu_ps(src: __m128, k: __mmask8, mem_addr: *const f32) -> __m128 {
+pub unsafe fn _mm_mask_expandloadu_ps(src: __m128, k: __mmask8, mem_addr: *const f32) -> __m128 {
     unsafe { let s = src.0; let mut o = [0.0f32; 4]; let mut i = 0; let mut j = 0usize; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*4) as *const f32); j += 1; v } else { s[i] }; i += 1; } __m128(o) }
 }
 
@@ -47827,251 +47747,231 @@ pub fn _mm_mask_getmant_ss<const NORM: i32, const SIGN: i32>(src: __m128, k: __m
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm_mask_i32gather_epi32<const SCALE: i32>(src: __m128i, slice: *const i32, offsets: __m128i, mask: __m128i) -> __m128i {
+pub unsafe fn _mm_mask_i32gather_epi32<const SCALE: i32>(src: __m128i, slice: *const i32, offsets: __m128i, mask: __m128i) -> __m128i {
     unsafe { let idx = lanes128_u32(offsets); let m = lanes128_u32(mask); let mut o = lanes128_u32(src); let mut i = 0; while i < 4 { if (i < 4 && (((m[i] as i32) < 0))) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i32) as u32; } i += 1; } from128_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm_mask_i32gather_epi64<const SCALE: i32>(src: __m128i, slice: *const i64, offsets: __m128i, mask: __m128i) -> __m128i {
+pub unsafe fn _mm_mask_i32gather_epi64<const SCALE: i32>(src: __m128i, slice: *const i64, offsets: __m128i, mask: __m128i) -> __m128i {
     unsafe { let idx = lanes128_u32(offsets); let m = lanes128_u64(mask); let mut o = lanes128_u64(src); let mut i = 0; while i < 2 { if (i < 2 && (((m[i] as i64) < 0))) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i64) as u64; } i += 1; } from128_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm_mask_i32gather_ps<const SCALE: i32>(src: __m128, slice: *const f32, offsets: __m128i, mask: __m128) -> __m128 {
+pub unsafe fn _mm_mask_i32gather_ps<const SCALE: i32>(src: __m128, slice: *const f32, offsets: __m128i, mask: __m128) -> __m128 {
     unsafe { let idx = lanes128_u32(offsets); let mut o = src.0; let mut i = 0; while i < 4 { if (i < 4 && ((mask.0[i].to_bits() as i32) < 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f32); } i += 1; } __m128(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_i32scatter_epi32<const SCALE: i32>(base_addr: *mut i32, k: __mmask8, vindex: __m128i, a: __m128i) {
+pub unsafe fn _mm_mask_i32scatter_epi32<const SCALE: i32>(base_addr: *mut i32, k: __mmask8, vindex: __m128i, a: __m128i) {
     unsafe { let idx = lanes128_u32(vindex); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i32, lanes128_u32(a)[i] as i32); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_i32scatter_epi64<const SCALE: i32>(base_addr: *mut i64, k: __mmask8, vindex: __m128i, a: __m128i) {
+pub unsafe fn _mm_mask_i32scatter_epi64<const SCALE: i32>(base_addr: *mut i64, k: __mmask8, vindex: __m128i, a: __m128i) {
     unsafe { let idx = lanes128_u32(vindex); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut i64, lanes128_u64(a)[i] as i64); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_i32scatter_pd<const SCALE: i32>(base_addr: *mut f64, k: __mmask8, vindex: __m128i, a: __m128d) {
+pub unsafe fn _mm_mask_i32scatter_pd<const SCALE: i32>(base_addr: *mut f64, k: __mmask8, vindex: __m128i, a: __m128d) {
     unsafe { let idx = lanes128_u32(vindex); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f64, a.0[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_i32scatter_ps<const SCALE: i32>(base_addr: *mut f32, k: __mmask8, vindex: __m128i, a: __m128) {
+pub unsafe fn _mm_mask_i32scatter_ps<const SCALE: i32>(base_addr: *mut f32, k: __mmask8, vindex: __m128i, a: __m128) {
     unsafe { let idx = lanes128_u32(vindex); let mut i = 0; while i < 4 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *mut f32, a.0[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm_mask_i64gather_epi32<const SCALE: i32>(src: __m128i, slice: *const i32, offsets: __m128i, mask: __m128i) -> __m128i { unsafe { let idx = lanes128_u64(offsets); let m = lanes128_u32(mask); let s = lanes128_u32(src); let mut o = [0u32; 4]; let mut i = 0; while i < 2 { if (((m[i] as i32) < 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i32) as u32; } else { o[i] = s[i]; } i += 1; } from128_u32(o) } }
+pub unsafe fn _mm_mask_i64gather_epi32<const SCALE: i32>(src: __m128i, slice: *const i32, offsets: __m128i, mask: __m128i) -> __m128i { unsafe { let idx = lanes128_u64(offsets); let m = lanes128_u32(mask); let s = lanes128_u32(src); let mut o = [0u32; 4]; let mut i = 0; while i < 2 { if (((m[i] as i32) < 0)) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i32) as u32; } else { o[i] = s[i]; } i += 1; } from128_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm_mask_i64gather_epi64<const SCALE: i32>(src: __m128i, slice: *const i64, offsets: __m128i, mask: __m128i) -> __m128i {
+pub unsafe fn _mm_mask_i64gather_epi64<const SCALE: i32>(src: __m128i, slice: *const i64, offsets: __m128i, mask: __m128i) -> __m128i {
     unsafe { let idx = lanes128_u64(offsets); let m = lanes128_u64(mask); let mut o = lanes128_u64(src); let mut i = 0; while i < 2 { if (i < 2 && (((m[i] as i64) < 0))) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i64) as u64; } i += 1; } from128_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx2"))]
-pub fn _mm_mask_i64gather_ps<const SCALE: i32>(src: __m128, slice: *const f32, offsets: __m128i, mask: __m128) -> __m128 { unsafe { let idx = lanes128_u64(offsets); let s = src.0; let mut o = [0.0f32; 4]; let mut i = 0; while i < 2 { if ((mask.0[i].to_bits() as i32) < 0) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f32); } else { o[i] = s[i]; } i += 1; } __m128(o) } }
+pub unsafe fn _mm_mask_i64gather_ps<const SCALE: i32>(src: __m128, slice: *const f32, offsets: __m128i, mask: __m128) -> __m128 { unsafe { let idx = lanes128_u64(offsets); let s = src.0; let mut o = [0.0f32; 4]; let mut i = 0; while i < 2 { if ((mask.0[i].to_bits() as i32) < 0) { o[i] = crate::ptr::read_unaligned((slice as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f32); } else { o[i] = s[i]; } i += 1; } __m128(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_i64scatter_epi32<const SCALE: i32>(base_addr: *mut i32, k: __mmask8, vindex: __m128i, a: __m128i) {
+pub unsafe fn _mm_mask_i64scatter_epi32<const SCALE: i32>(base_addr: *mut i32, k: __mmask8, vindex: __m128i, a: __m128i) {
     unsafe { let idx = lanes128_u64(vindex); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i32, lanes128_u32(a)[i] as i32); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_i64scatter_epi64<const SCALE: i32>(base_addr: *mut i64, k: __mmask8, vindex: __m128i, a: __m128i) {
+pub unsafe fn _mm_mask_i64scatter_epi64<const SCALE: i32>(base_addr: *mut i64, k: __mmask8, vindex: __m128i, a: __m128i) {
     unsafe { let idx = lanes128_u64(vindex); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut i64, lanes128_u64(a)[i] as i64); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_i64scatter_pd<const SCALE: i32>(base_addr: *mut f64, k: __mmask8, vindex: __m128i, a: __m128d) {
+pub unsafe fn _mm_mask_i64scatter_pd<const SCALE: i32>(base_addr: *mut f64, k: __mmask8, vindex: __m128i, a: __m128d) {
     unsafe { let idx = lanes128_u64(vindex); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f64, a.0[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_i64scatter_ps<const SCALE: i32>(base_addr: *mut f32, k: __mmask8, vindex: __m128i, a: __m128) {
+pub unsafe fn _mm_mask_i64scatter_ps<const SCALE: i32>(base_addr: *mut f32, k: __mmask8, vindex: __m128i, a: __m128) {
     unsafe { let idx = lanes128_u64(vindex); let mut i = 0; while i < 2 { if (((k as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((base_addr as *mut u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *mut f32, a.0[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mmask_i32gather_epi32<const SCALE: i32>(src: __m256i, k: __mmask8, vindex: __m256i, base_addr: *const i32) -> __m256i {
+pub unsafe fn _mm256_mmask_i32gather_epi32<const SCALE: i32>(src: __m256i, k: __mmask8, vindex: __m256i, base_addr: *const i32) -> __m256i {
     unsafe { let idx = lanes256_u32(vindex); let mut o = lanes256_u32(src); let mut i = 0; while i < 8 { if (i < 8 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i32) as u32; } i += 1; } from256_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mmask_i32gather_epi64<const SCALE: i32>(src: __m256i, k: __mmask8, vindex: __m128i, base_addr: *const i64) -> __m256i {
+pub unsafe fn _mm256_mmask_i32gather_epi64<const SCALE: i32>(src: __m256i, k: __mmask8, vindex: __m128i, base_addr: *const i64) -> __m256i {
     unsafe { let idx = lanes128_u32(vindex); let mut o = lanes256_u64(src); let mut i = 0; while i < 4 { if (i < 4 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i64) as u64; } i += 1; } from256_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mmask_i32gather_pd<const SCALE: i32>(src: __m256d, k: __mmask8, vindex: __m128i, base_addr: *const f64) -> __m256d {
+pub unsafe fn _mm256_mmask_i32gather_pd<const SCALE: i32>(src: __m256d, k: __mmask8, vindex: __m128i, base_addr: *const f64) -> __m256d {
     unsafe { let idx = lanes128_u32(vindex); let mut o = src.0; let mut i = 0; while i < 4 { if (i < 4 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f64); } i += 1; } __m256d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mmask_i32gather_ps<const SCALE: i32>(src: __m256, k: __mmask8, vindex: __m256i, base_addr: *const f32) -> __m256 {
+pub unsafe fn _mm256_mmask_i32gather_ps<const SCALE: i32>(src: __m256, k: __mmask8, vindex: __m256i, base_addr: *const f32) -> __m256 {
     unsafe { let idx = lanes256_u32(vindex); let mut o = src.0; let mut i = 0; while i < 8 { if (i < 8 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f32); } i += 1; } __m256(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mmask_i64gather_epi32<const SCALE: i32>(src: __m128i, k: __mmask8, vindex: __m256i, base_addr: *const i32) -> __m128i {
+pub unsafe fn _mm256_mmask_i64gather_epi32<const SCALE: i32>(src: __m128i, k: __mmask8, vindex: __m256i, base_addr: *const i32) -> __m128i {
     unsafe { let idx = lanes256_u64(vindex); let mut o = lanes128_u32(src); let mut i = 0; while i < 4 { if (i < 4 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i32) as u32; } i += 1; } from128_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mmask_i64gather_epi64<const SCALE: i32>(src: __m256i, k: __mmask8, vindex: __m256i, base_addr: *const i64) -> __m256i {
+pub unsafe fn _mm256_mmask_i64gather_epi64<const SCALE: i32>(src: __m256i, k: __mmask8, vindex: __m256i, base_addr: *const i64) -> __m256i {
     unsafe { let idx = lanes256_u64(vindex); let mut o = lanes256_u64(src); let mut i = 0; while i < 4 { if (i < 4 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i64) as u64; } i += 1; } from256_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mmask_i64gather_pd<const SCALE: i32>(src: __m256d, k: __mmask8, vindex: __m256i, base_addr: *const f64) -> __m256d {
+pub unsafe fn _mm256_mmask_i64gather_pd<const SCALE: i32>(src: __m256d, k: __mmask8, vindex: __m256i, base_addr: *const f64) -> __m256d {
     unsafe { let idx = lanes256_u64(vindex); let mut o = src.0; let mut i = 0; while i < 4 { if (i < 4 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f64); } i += 1; } __m256d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm256_mmask_i64gather_ps<const SCALE: i32>(src: __m128, k: __mmask8, vindex: __m256i, base_addr: *const f32) -> __m128 {
+pub unsafe fn _mm256_mmask_i64gather_ps<const SCALE: i32>(src: __m128, k: __mmask8, vindex: __m256i, base_addr: *const f32) -> __m128 {
     unsafe { let idx = lanes256_u64(vindex); let mut o = src.0; let mut i = 0; while i < 4 { if (i < 4 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f32); } i += 1; } __m128(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mmask_i32gather_epi32<const SCALE: i32>(src: __m128i, k: __mmask8, vindex: __m128i, base_addr: *const i32) -> __m128i {
+pub unsafe fn _mm_mmask_i32gather_epi32<const SCALE: i32>(src: __m128i, k: __mmask8, vindex: __m128i, base_addr: *const i32) -> __m128i {
     unsafe { let idx = lanes128_u32(vindex); let mut o = lanes128_u32(src); let mut i = 0; while i < 4 { if (i < 4 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i32) as u32; } i += 1; } from128_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mmask_i32gather_epi64<const SCALE: i32>(src: __m128i, k: __mmask8, vindex: __m128i, base_addr: *const i64) -> __m128i {
+pub unsafe fn _mm_mmask_i32gather_epi64<const SCALE: i32>(src: __m128i, k: __mmask8, vindex: __m128i, base_addr: *const i64) -> __m128i {
     unsafe { let idx = lanes128_u32(vindex); let mut o = lanes128_u64(src); let mut i = 0; while i < 2 { if (i < 2 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const i64) as u64; } i += 1; } from128_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mmask_i32gather_pd<const SCALE: i32>(src: __m128d, k: __mmask8, vindex: __m128i, base_addr: *const f64) -> __m128d {
+pub unsafe fn _mm_mmask_i32gather_pd<const SCALE: i32>(src: __m128d, k: __mmask8, vindex: __m128i, base_addr: *const f64) -> __m128d {
     unsafe { let idx = lanes128_u32(vindex); let mut o = src.0; let mut i = 0; while i < 2 { if (i < 2 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f64); } i += 1; } __m128d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mmask_i32gather_ps<const SCALE: i32>(src: __m128, k: __mmask8, vindex: __m128i, base_addr: *const f32) -> __m128 {
+pub unsafe fn _mm_mmask_i32gather_ps<const SCALE: i32>(src: __m128, k: __mmask8, vindex: __m128i, base_addr: *const f32) -> __m128 {
     unsafe { let idx = lanes128_u32(vindex); let mut o = src.0; let mut i = 0; while i < 4 { if (i < 4 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset((((idx[i] as u32 as i32) as i64) * (SCALE as i64)) as isize) as *const f32); } i += 1; } __m128(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mmask_i64gather_epi32<const SCALE: i32>(src: __m128i, k: __mmask8, vindex: __m128i, base_addr: *const i32) -> __m128i {
+pub unsafe fn _mm_mmask_i64gather_epi32<const SCALE: i32>(src: __m128i, k: __mmask8, vindex: __m128i, base_addr: *const i32) -> __m128i {
     unsafe { let idx = lanes128_u64(vindex); let mut o = lanes128_u32(src); let mut i = 0; while i < 4 { if (i < 2 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i32) as u32; } i += 1; } from128_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mmask_i64gather_epi64<const SCALE: i32>(src: __m128i, k: __mmask8, vindex: __m128i, base_addr: *const i64) -> __m128i {
+pub unsafe fn _mm_mmask_i64gather_epi64<const SCALE: i32>(src: __m128i, k: __mmask8, vindex: __m128i, base_addr: *const i64) -> __m128i {
     unsafe { let idx = lanes128_u64(vindex); let mut o = lanes128_u64(src); let mut i = 0; while i < 2 { if (i < 2 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const i64) as u64; } i += 1; } from128_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mmask_i64gather_pd<const SCALE: i32>(src: __m128d, k: __mmask8, vindex: __m128i, base_addr: *const f64) -> __m128d {
+pub unsafe fn _mm_mmask_i64gather_pd<const SCALE: i32>(src: __m128d, k: __mmask8, vindex: __m128i, base_addr: *const f64) -> __m128d {
     unsafe { let idx = lanes128_u64(vindex); let mut o = src.0; let mut i = 0; while i < 2 { if (i < 2 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f64); } i += 1; } __m128d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mmask_i64gather_ps<const SCALE: i32>(src: __m128, k: __mmask8, vindex: __m128i, base_addr: *const f32) -> __m128 {
+pub unsafe fn _mm_mmask_i64gather_ps<const SCALE: i32>(src: __m128, k: __mmask8, vindex: __m128i, base_addr: *const f32) -> __m128 {
     unsafe { let idx = lanes128_u64(vindex); let mut o = src.0; let mut i = 0; while i < 4 { if (i < 2 && (((k as u64) >> i) & 1 != 0)) { o[i] = crate::ptr::read_unaligned((base_addr as *const u8).offset(((idx[i] as i64) * (SCALE as i64)) as isize) as *const f32); } i += 1; } __m128(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_load_epi32(src: __m128i, k: __mmask8, mem_addr: *const i32) -> __m128i {
-    unsafe { let r = lanes128_u32(crate::ptr::read_unaligned(mem_addr as *const __m128i)); let s = lanes128_u32(src); let mut o = [0u32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u32(o) }
-}
+pub unsafe fn _mm_mask_load_epi32(src: __m128i, k: __mmask8, mem_addr: *const i32) -> __m128i { unsafe { let s = lanes128_u32(src); let mut o = [0u32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const u32) } else { s[i] }; i += 1; } from128_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_load_epi64(src: __m128i, k: __mmask8, mem_addr: *const i64) -> __m128i {
-    unsafe { let r = lanes128_u64(crate::ptr::read_unaligned(mem_addr as *const __m128i)); let s = lanes128_u64(src); let mut o = [0u64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u64(o) }
-}
+pub unsafe fn _mm_mask_load_epi64(src: __m128i, k: __mmask8, mem_addr: *const i64) -> __m128i { unsafe { let s = lanes128_u64(src); let mut o = [0u64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const u64) } else { s[i] }; i += 1; } from128_u64(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_load_pd(src: __m128d, k: __mmask8, mem_addr: *const f64) -> __m128d {
-    unsafe { let r = (_mm_load_pd(mem_addr)).0; let s = src.0; let mut o = [0.0f64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m128d(o) }
-}
+pub unsafe fn _mm_mask_load_pd(src: __m128d, k: __mmask8, mem_addr: *const f64) -> __m128d { unsafe { let s = src.0; let mut o = [0.0f64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const f64) } else { s[i] }; i += 1; } __m128d(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_load_ps(src: __m128, k: __mmask8, mem_addr: *const f32) -> __m128 {
-    unsafe { let r = (_mm_load_ps(mem_addr)).0; let s = src.0; let mut o = [0.0f32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m128(o) }
-}
+pub unsafe fn _mm_mask_load_ps(src: __m128, k: __mmask8, mem_addr: *const f32) -> __m128 { unsafe { let s = src.0; let mut o = [0.0f32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const f32) } else { s[i] }; i += 1; } __m128(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm_mask_load_sd(src: __m128d, k: __mmask8, mem_addr: *const f64) -> __m128d {
+pub unsafe fn _mm_mask_load_sd(src: __m128d, k: __mmask8, mem_addr: *const f64) -> __m128d {
     unsafe { let r = (_mm_load_sd(mem_addr)).0; let mut o = r; o[0] = if (((k as u64) >> 0usize) & 1 != 0) { r[0] } else { src.0[0] }; __m128d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm_mask_load_ss(src: __m128, k: __mmask8, mem_addr: *const f32) -> __m128 {
+pub unsafe fn _mm_mask_load_ss(src: __m128, k: __mmask8, mem_addr: *const f32) -> __m128 {
     unsafe { let r = (_mm_load_ss(mem_addr)).0; let mut o = r; o[0] = if (((k as u64) >> 0usize) & 1 != 0) { r[0] } else { src.0[0] }; __m128(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm_mask_loadu_epi16(src: __m128i, k: __mmask8, mem_addr: *const i16) -> __m128i {
-    unsafe { let r = lanes128_u16(crate::ptr::read_unaligned(mem_addr as *const __m128i)); let s = lanes128_u16(src); let mut o = [0u16; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u16(o) }
-}
+pub unsafe fn _mm_mask_loadu_epi16(src: __m128i, k: __mmask8, mem_addr: *const i16) -> __m128i { unsafe { let s = lanes128_u16(src); let mut o = [0u16; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*2) as *const u16) } else { s[i] }; i += 1; } from128_u16(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_loadu_epi32(src: __m128i, k: __mmask8, mem_addr: *const i32) -> __m128i {
-    unsafe { let r = lanes128_u32(_mm_loadu_epi32(mem_addr)); let s = lanes128_u32(src); let mut o = [0u32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u32(o) }
-}
+pub unsafe fn _mm_mask_loadu_epi32(src: __m128i, k: __mmask8, mem_addr: *const i32) -> __m128i { unsafe { let s = lanes128_u32(src); let mut o = [0u32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const u32) } else { s[i] }; i += 1; } from128_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_loadu_epi64(src: __m128i, k: __mmask8, mem_addr: *const i64) -> __m128i {
-    unsafe { let r = lanes128_u64(crate::ptr::read_unaligned(mem_addr as *const __m128i)); let s = lanes128_u64(src); let mut o = [0u64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u64(o) }
-}
+pub unsafe fn _mm_mask_loadu_epi64(src: __m128i, k: __mmask8, mem_addr: *const i64) -> __m128i { unsafe { let s = lanes128_u64(src); let mut o = [0u64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const u64) } else { s[i] }; i += 1; } from128_u64(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm_mask_loadu_epi8(src: __m128i, k: __mmask16, mem_addr: *const i8) -> __m128i {
-    unsafe { let r = lanes128_u8(crate::ptr::read_unaligned(mem_addr as *const __m128i)); let s = lanes128_u8(src); let mut o = [0u8; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u8(o) }
-}
+pub unsafe fn _mm_mask_loadu_epi8(src: __m128i, k: __mmask16, mem_addr: *const i8) -> __m128i { unsafe { let s = lanes128_u8(src); let mut o = [0u8; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*1) as *const u8) } else { s[i] }; i += 1; } from128_u8(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_loadu_pd(src: __m128d, k: __mmask8, mem_addr: *const f64) -> __m128d {
-    unsafe { let r = (_mm_loadu_pd(mem_addr)).0; let s = src.0; let mut o = [0.0f64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m128d(o) }
-}
+pub unsafe fn _mm_mask_loadu_pd(src: __m128d, k: __mmask8, mem_addr: *const f64) -> __m128d { unsafe { let s = src.0; let mut o = [0.0f64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const f64) } else { s[i] }; i += 1; } __m128d(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_loadu_ps(src: __m128, k: __mmask8, mem_addr: *const f32) -> __m128 {
-    unsafe { let r = (_mm_loadu_ps(mem_addr)).0; let s = src.0; let mut o = [0.0f32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m128(o) }
-}
+pub unsafe fn _mm_mask_loadu_ps(src: __m128, k: __mmask8, mem_addr: *const f32) -> __m128 { unsafe { let s = src.0; let mut o = [0.0f32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const f32) } else { s[i] }; i += 1; } __m128(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512cd,avx512vl"))]
@@ -49245,69 +49145,69 @@ pub fn _mm_mask_srlv_epi64(src: __m128i, k: __mmask8, a: __m128i, count: __m128i
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_store_epi32(mem_addr: *mut i32, mask: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_store_epi32(mem_addr: *mut i32, mask: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u32(a); let mut i = 0; while i < 4 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut u32, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_store_epi64(mem_addr: *mut i64, mask: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_store_epi64(mem_addr: *mut i64, mask: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*8) as *mut u64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_store_pd(mem_addr: *mut f64, mask: __mmask8, a: __m128d) {
+pub unsafe fn _mm_mask_store_pd(mem_addr: *mut f64, mask: __mmask8, a: __m128d) {
     unsafe { let a = a.0; let mut i = 0; while i < 2 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*8) as *mut f64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_store_ps(mem_addr: *mut f32, mask: __mmask8, a: __m128) {
+pub unsafe fn _mm_mask_store_ps(mem_addr: *mut f32, mask: __mmask8, a: __m128) {
     unsafe { let a = a.0; let mut i = 0; while i < 4 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut f32, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm_mask_store_sd(mem_addr: *mut f64, k: __mmask8, a: __m128d) { unsafe { if ((k as u64) & 1 != 0) { crate::ptr::write_unaligned(mem_addr, a.0[0]); } } }
+pub unsafe fn _mm_mask_store_sd(mem_addr: *mut f64, k: __mmask8, a: __m128d) { unsafe { if ((k as u64) & 1 != 0) { crate::ptr::write_unaligned(mem_addr, a.0[0]); } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm_mask_store_ss(mem_addr: *mut f32, k: __mmask8, a: __m128) { unsafe { if ((k as u64) & 1 != 0) { crate::ptr::write_unaligned(mem_addr, a.0[0]); } } }
+pub unsafe fn _mm_mask_store_ss(mem_addr: *mut f32, k: __mmask8, a: __m128) { unsafe { if ((k as u64) & 1 != 0) { crate::ptr::write_unaligned(mem_addr, a.0[0]); } } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm_mask_storeu_epi16(mem_addr: *mut i16, mask: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_storeu_epi16(mem_addr: *mut i16, mask: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u16(a); let mut i = 0; while i < 8 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*2) as *mut u16, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_storeu_epi32(mem_addr: *mut i32, mask: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_storeu_epi32(mem_addr: *mut i32, mask: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u32(a); let mut i = 0; while i < 4 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut u32, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_storeu_epi64(mem_addr: *mut i64, mask: __mmask8, a: __m128i) {
+pub unsafe fn _mm_mask_storeu_epi64(mem_addr: *mut i64, mask: __mmask8, a: __m128i) {
     unsafe { let a = lanes128_u64(a); let mut i = 0; while i < 2 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*8) as *mut u64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm_mask_storeu_epi8(mem_addr: *mut i8, mask: __mmask16, a: __m128i) {
+pub unsafe fn _mm_mask_storeu_epi8(mem_addr: *mut i8, mask: __mmask16, a: __m128i) {
     unsafe { let a = lanes128_u8(a); let mut i = 0; while i < 16 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*1) as *mut u8, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_storeu_pd(mem_addr: *mut f64, mask: __mmask8, a: __m128d) {
+pub unsafe fn _mm_mask_storeu_pd(mem_addr: *mut f64, mask: __mmask8, a: __m128d) {
     unsafe { let a = a.0; let mut i = 0; while i < 2 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*8) as *mut f64, a[i]); } i += 1; } }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_mask_storeu_ps(mem_addr: *mut f32, mask: __mmask8, a: __m128) {
+pub unsafe fn _mm_mask_storeu_ps(mem_addr: *mut f32, mask: __mmask8, a: __m128) {
     unsafe { let a = a.0; let mut i = 0; while i < 4 { if (((mask as u64) >> i) & 1 != 0) { crate::ptr::write_unaligned((mem_addr as *mut u8).add(i*4) as *mut f32, a[i]); } i += 1; } }
 }
 
@@ -50243,37 +50143,37 @@ pub fn _mm_maskz_expand_ps(k: __mmask8, a: __m128) -> __m128 {
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2,avx512vl"))]
-pub fn _mm_maskz_expandloadu_epi16(k: __mmask8, mem_addr: *const i16) -> __m128i {
+pub unsafe fn _mm_maskz_expandloadu_epi16(k: __mmask8, mem_addr: *const i16) -> __m128i {
     unsafe { let s = [0u16; 8]; let mut o = [0u16; 8]; let mut i = 0; let mut j = 0usize; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*2) as *const u16); j += 1; v } else { s[i] }; i += 1; } from128_u16(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_maskz_expandloadu_epi32(k: __mmask8, mem_addr: *const i32) -> __m128i {
+pub unsafe fn _mm_maskz_expandloadu_epi32(k: __mmask8, mem_addr: *const i32) -> __m128i {
     unsafe { let s = [0u32; 4]; let mut o = [0u32; 4]; let mut i = 0; let mut j = 0usize; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*4) as *const u32); j += 1; v } else { s[i] }; i += 1; } from128_u32(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_maskz_expandloadu_epi64(k: __mmask8, mem_addr: *const i64) -> __m128i {
+pub unsafe fn _mm_maskz_expandloadu_epi64(k: __mmask8, mem_addr: *const i64) -> __m128i {
     unsafe { let s = [0u64; 2]; let mut o = [0u64; 2]; let mut i = 0; let mut j = 0usize; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*8) as *const u64); j += 1; v } else { s[i] }; i += 1; } from128_u64(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi2,avx512vl"))]
-pub fn _mm_maskz_expandloadu_epi8(k: __mmask16, mem_addr: *const i8) -> __m128i {
+pub unsafe fn _mm_maskz_expandloadu_epi8(k: __mmask16, mem_addr: *const i8) -> __m128i {
     unsafe { let s = [0u8; 16]; let mut o = [0u8; 16]; let mut i = 0; let mut j = 0usize; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*1) as *const u8); j += 1; v } else { s[i] }; i += 1; } from128_u8(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_maskz_expandloadu_pd(k: __mmask8, mem_addr: *const f64) -> __m128d {
+pub unsafe fn _mm_maskz_expandloadu_pd(k: __mmask8, mem_addr: *const f64) -> __m128d {
     unsafe { let s = [0.0f64; 2]; let mut o = [0.0f64; 2]; let mut i = 0; let mut j = 0usize; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*8) as *const f64); j += 1; v } else { s[i] }; i += 1; } __m128d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_maskz_expandloadu_ps(k: __mmask8, mem_addr: *const f32) -> __m128 {
+pub unsafe fn _mm_maskz_expandloadu_ps(k: __mmask8, mem_addr: *const f32) -> __m128 {
     unsafe { let s = [0.0f32; 4]; let mut o = [0.0f32; 4]; let mut i = 0; let mut j = 0usize; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { let v = crate::ptr::read_unaligned((mem_addr as *const u8).add(j*4) as *const f32); j += 1; v } else { s[i] }; i += 1; } __m128(o) }
 }
 
@@ -50555,75 +50455,55 @@ pub fn _mm_maskz_getmant_ss<const NORM: i32, const SIGN: i32>(k: __mmask8, a: __
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_maskz_load_epi32(k: __mmask8, mem_addr: *const i32) -> __m128i {
-    unsafe { let r = lanes128_u32(crate::ptr::read_unaligned(mem_addr as *const __m128i)); let s = [0u32; 4]; let mut o = [0u32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u32(o) }
-}
+pub unsafe fn _mm_maskz_load_epi32(k: __mmask8, mem_addr: *const i32) -> __m128i { unsafe { let mut o = [0u32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const u32) } else { 0u32 }; i += 1; } from128_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_maskz_load_epi64(k: __mmask8, mem_addr: *const i64) -> __m128i {
-    unsafe { let r = lanes128_u64(crate::ptr::read_unaligned(mem_addr as *const __m128i)); let s = [0u64; 2]; let mut o = [0u64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u64(o) }
-}
+pub unsafe fn _mm_maskz_load_epi64(k: __mmask8, mem_addr: *const i64) -> __m128i { unsafe { let mut o = [0u64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const u64) } else { 0u64 }; i += 1; } from128_u64(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_maskz_load_pd(k: __mmask8, mem_addr: *const f64) -> __m128d {
-    unsafe { let r = (_mm_load_pd(mem_addr)).0; let s = [0.0; 2]; let mut o = [0.0f64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m128d(o) }
-}
+pub unsafe fn _mm_maskz_load_pd(k: __mmask8, mem_addr: *const f64) -> __m128d { unsafe { let mut o = [0.0f64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const f64) } else { 0.0f64 }; i += 1; } __m128d(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_maskz_load_ps(k: __mmask8, mem_addr: *const f32) -> __m128 {
-    unsafe { let r = (_mm_load_ps(mem_addr)).0; let s = [0.0; 4]; let mut o = [0.0f32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m128(o) }
-}
+pub unsafe fn _mm_maskz_load_ps(k: __mmask8, mem_addr: *const f32) -> __m128 { unsafe { let mut o = [0.0f32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const f32) } else { 0.0f32 }; i += 1; } __m128(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm_maskz_load_sd(k: __mmask8, mem_addr: *const f64) -> __m128d {
+pub unsafe fn _mm_maskz_load_sd(k: __mmask8, mem_addr: *const f64) -> __m128d {
     unsafe { let r = (_mm_load_sd(mem_addr)).0; let mut o = r; o[0] = if (((k as u64) >> 0usize) & 1 != 0) { r[0] } else { 0.0 }; __m128d(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _mm_maskz_load_ss(k: __mmask8, mem_addr: *const f32) -> __m128 {
+pub unsafe fn _mm_maskz_load_ss(k: __mmask8, mem_addr: *const f32) -> __m128 {
     unsafe { let r = (_mm_load_ss(mem_addr)).0; let mut o = r; o[0] = if (((k as u64) >> 0usize) & 1 != 0) { r[0] } else { 0.0 }; __m128(o) }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm_maskz_loadu_epi16(k: __mmask8, mem_addr: *const i16) -> __m128i {
-    unsafe { let r = lanes128_u16(crate::ptr::read_unaligned(mem_addr as *const __m128i)); let s = [0u16; 8]; let mut o = [0u16; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u16(o) }
-}
+pub unsafe fn _mm_maskz_loadu_epi16(k: __mmask8, mem_addr: *const i16) -> __m128i { unsafe { let mut o = [0u16; 8]; let mut i = 0; while i < 8 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*2) as *const u16) } else { 0u16 }; i += 1; } from128_u16(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_maskz_loadu_epi32(k: __mmask8, mem_addr: *const i32) -> __m128i {
-    unsafe { let r = lanes128_u32(_mm_loadu_epi32(mem_addr)); let s = [0u32; 4]; let mut o = [0u32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u32(o) }
-}
+pub unsafe fn _mm_maskz_loadu_epi32(k: __mmask8, mem_addr: *const i32) -> __m128i { unsafe { let mut o = [0u32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const u32) } else { 0u32 }; i += 1; } from128_u32(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_maskz_loadu_epi64(k: __mmask8, mem_addr: *const i64) -> __m128i {
-    unsafe { let r = lanes128_u64(crate::ptr::read_unaligned(mem_addr as *const __m128i)); let s = [0u64; 2]; let mut o = [0u64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u64(o) }
-}
+pub unsafe fn _mm_maskz_loadu_epi64(k: __mmask8, mem_addr: *const i64) -> __m128i { unsafe { let mut o = [0u64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const u64) } else { 0u64 }; i += 1; } from128_u64(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw,avx512vl"))]
-pub fn _mm_maskz_loadu_epi8(k: __mmask16, mem_addr: *const i8) -> __m128i {
-    unsafe { let r = lanes128_u8(crate::ptr::read_unaligned(mem_addr as *const __m128i)); let s = [0u8; 16]; let mut o = [0u8; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u8(o) }
-}
+pub unsafe fn _mm_maskz_loadu_epi8(k: __mmask16, mem_addr: *const i8) -> __m128i { unsafe { let mut o = [0u8; 16]; let mut i = 0; while i < 16 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*1) as *const u8) } else { 0u8 }; i += 1; } from128_u8(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_maskz_loadu_pd(k: __mmask8, mem_addr: *const f64) -> __m128d {
-    unsafe { let r = (_mm_loadu_pd(mem_addr)).0; let s = [0.0; 2]; let mut o = [0.0f64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m128d(o) }
-}
+pub unsafe fn _mm_maskz_loadu_pd(k: __mmask8, mem_addr: *const f64) -> __m128d { unsafe { let mut o = [0.0f64; 2]; let mut i = 0; while i < 2 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*8) as *const f64) } else { 0.0f64 }; i += 1; } __m128d(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
-pub fn _mm_maskz_loadu_ps(k: __mmask8, mem_addr: *const f32) -> __m128 {
-    unsafe { let r = (_mm_loadu_ps(mem_addr)).0; let s = [0.0; 4]; let mut o = [0.0f32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } __m128(o) }
-}
+pub unsafe fn _mm_maskz_loadu_ps(k: __mmask8, mem_addr: *const f32) -> __m128 { unsafe { let mut o = [0.0f32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { crate::ptr::read_unaligned((mem_addr as *const u8).add(i*4) as *const f32) } else { 0.0f32 }; i += 1; } __m128(o) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512cd,avx512vl"))]
@@ -51937,7 +51817,7 @@ pub fn _kortestc_mask8_u8(a: __mmask8, b: __mmask8) -> u8 { unsafe { ((a | b) ==
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
-pub fn _kortest_mask8_u8(a: __mmask8, b: __mmask8, all_ones: *mut u8) -> u8 { unsafe { *all_ones = ((a | b) == u8::MAX) as u8; ((a | b) == 0) as u8 } }
+pub unsafe fn _kortest_mask8_u8(a: __mmask8, b: __mmask8, all_ones: *mut u8) -> u8 { unsafe { *all_ones = ((a | b) == u8::MAX) as u8; ((a | b) == 0) as u8 } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
@@ -51949,7 +51829,7 @@ pub fn _ktestc_mask8_u8(a: __mmask8, b: __mmask8) -> u8 { unsafe { (((!a) & b) =
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
-pub fn _ktest_mask8_u8(a: __mmask8, b: __mmask8, and_not: *mut u8) -> u8 { unsafe { *and_not = (((!a) & b) == 0) as u8; ((a & b) == 0) as u8 } }
+pub unsafe fn _ktest_mask8_u8(a: __mmask8, b: __mmask8, and_not: *mut u8) -> u8 { unsafe { *and_not = (((!a) & b) == 0) as u8; ((a & b) == 0) as u8 } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
@@ -51997,7 +51877,7 @@ pub fn _kortestc_mask16_u8(a: __mmask16, b: __mmask16) -> u8 { unsafe { ((a | b)
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _kortest_mask16_u8(a: __mmask16, b: __mmask16, all_ones: *mut u8) -> u8 { unsafe { *all_ones = ((a | b) == u16::MAX) as u8; ((a | b) == 0) as u8 } }
+pub unsafe fn _kortest_mask16_u8(a: __mmask16, b: __mmask16, all_ones: *mut u8) -> u8 { unsafe { *all_ones = ((a | b) == u16::MAX) as u8; ((a | b) == 0) as u8 } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
@@ -52009,7 +51889,7 @@ pub fn _ktestc_mask16_u8(a: __mmask16, b: __mmask16) -> u8 { unsafe { (((!a) & b
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _ktest_mask16_u8(a: __mmask16, b: __mmask16, and_not: *mut u8) -> u8 { unsafe { *and_not = (((!a) & b) == 0) as u8; ((a & b) == 0) as u8 } }
+pub unsafe fn _ktest_mask16_u8(a: __mmask16, b: __mmask16, and_not: *mut u8) -> u8 { unsafe { *and_not = (((!a) & b) == 0) as u8; ((a & b) == 0) as u8 } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
@@ -52057,7 +51937,7 @@ pub fn _kortestc_mask32_u8(a: __mmask32, b: __mmask32) -> u8 { unsafe { ((a | b)
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _kortest_mask32_u8(a: __mmask32, b: __mmask32, all_ones: *mut u8) -> u8 { unsafe { *all_ones = ((a | b) == u32::MAX) as u8; ((a | b) == 0) as u8 } }
+pub unsafe fn _kortest_mask32_u8(a: __mmask32, b: __mmask32, all_ones: *mut u8) -> u8 { unsafe { *all_ones = ((a | b) == u32::MAX) as u8; ((a | b) == 0) as u8 } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
@@ -52069,7 +51949,7 @@ pub fn _ktestc_mask32_u8(a: __mmask32, b: __mmask32) -> u8 { unsafe { (((!a) & b
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _ktest_mask32_u8(a: __mmask32, b: __mmask32, and_not: *mut u8) -> u8 { unsafe { *and_not = (((!a) & b) == 0) as u8; ((a & b) == 0) as u8 } }
+pub unsafe fn _ktest_mask32_u8(a: __mmask32, b: __mmask32, and_not: *mut u8) -> u8 { unsafe { *and_not = (((!a) & b) == 0) as u8; ((a & b) == 0) as u8 } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
@@ -52117,7 +51997,7 @@ pub fn _kortestc_mask64_u8(a: __mmask64, b: __mmask64) -> u8 { unsafe { ((a | b)
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _kortest_mask64_u8(a: __mmask64, b: __mmask64, all_ones: *mut u8) -> u8 { unsafe { *all_ones = ((a | b) == u64::MAX) as u8; ((a | b) == 0) as u8 } }
+pub unsafe fn _kortest_mask64_u8(a: __mmask64, b: __mmask64, all_ones: *mut u8) -> u8 { unsafe { *all_ones = ((a | b) == u64::MAX) as u8; ((a | b) == 0) as u8 } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
@@ -52129,7 +52009,7 @@ pub fn _ktestc_mask64_u8(a: __mmask64, b: __mmask64) -> u8 { unsafe { (((!a) & b
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _ktest_mask64_u8(a: __mmask64, b: __mmask64, and_not: *mut u8) -> u8 { unsafe { *and_not = (((!a) & b) == 0) as u8; ((a & b) == 0) as u8 } }
+pub unsafe fn _ktest_mask64_u8(a: __mmask64, b: __mmask64, and_not: *mut u8) -> u8 { unsafe { *and_not = (((!a) & b) == 0) as u8; ((a & b) == 0) as u8 } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
@@ -52165,35 +52045,35 @@ pub fn _cvtu64_mask64(a: u64) -> __mmask64 { unsafe { a } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
-pub fn _load_mask8(mem_addr: *const __mmask8) -> __mmask8 { unsafe { crate::ptr::read_unaligned(mem_addr) } }
+pub unsafe fn _load_mask8(mem_addr: *const __mmask8) -> __mmask8 { unsafe { crate::ptr::read_unaligned(mem_addr) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512dq"))]
-pub fn _store_mask8(mem_addr: *mut __mmask8, a: __mmask8) { unsafe { crate::ptr::write_unaligned(mem_addr, a) } }
+pub unsafe fn _store_mask8(mem_addr: *mut __mmask8, a: __mmask8) { unsafe { crate::ptr::write_unaligned(mem_addr, a) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _load_mask16(mem_addr: *const __mmask16) -> __mmask16 { unsafe { crate::ptr::read_unaligned(mem_addr) } }
+pub unsafe fn _load_mask16(mem_addr: *const __mmask16) -> __mmask16 { unsafe { crate::ptr::read_unaligned(mem_addr) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
-pub fn _store_mask16(mem_addr: *mut __mmask16, a: __mmask16) { unsafe { crate::ptr::write_unaligned(mem_addr, a) } }
+pub unsafe fn _store_mask16(mem_addr: *mut __mmask16, a: __mmask16) { unsafe { crate::ptr::write_unaligned(mem_addr, a) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _load_mask32(mem_addr: *const __mmask32) -> __mmask32 { unsafe { crate::ptr::read_unaligned(mem_addr) } }
+pub unsafe fn _load_mask32(mem_addr: *const __mmask32) -> __mmask32 { unsafe { crate::ptr::read_unaligned(mem_addr) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _store_mask32(mem_addr: *mut __mmask32, a: __mmask32) { unsafe { crate::ptr::write_unaligned(mem_addr, a) } }
+pub unsafe fn _store_mask32(mem_addr: *mut __mmask32, a: __mmask32) { unsafe { crate::ptr::write_unaligned(mem_addr, a) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _load_mask64(mem_addr: *const __mmask64) -> __mmask64 { unsafe { crate::ptr::read_unaligned(mem_addr) } }
+pub unsafe fn _load_mask64(mem_addr: *const __mmask64) -> __mmask64 { unsafe { crate::ptr::read_unaligned(mem_addr) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bw"))]
-pub fn _store_mask64(mem_addr: *mut __mmask64, a: __mmask64) { unsafe { crate::ptr::write_unaligned(mem_addr, a) } }
+pub unsafe fn _store_mask64(mem_addr: *mut __mmask64, a: __mmask64) { unsafe { crate::ptr::write_unaligned(mem_addr, a) } }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]

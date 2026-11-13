@@ -316,6 +316,10 @@ pub mod detect {
             | bit(Feature::Tbm, root.ebx == 0x68747541 && root.ecx == 0x444d4163 && root.edx == 0x69746e65 && ext & (1 << 21) != 0)
     }
 
+    // SHA512 and TBM are x86-64 leaf features; other targets report none.
+    #[cfg(not(target_arch = "x86_64"))]
+    fn detect_features_hi() -> u64 { 0 }
+
     #[cfg(all(any(target_os = "linux", target_os = "android"), target_arch = "aarch64"))]
     fn detect_features() -> u128 {
         extern "C" { fn getauxval(kind: usize) -> usize; }
