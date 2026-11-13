@@ -151,30 +151,39 @@ pub struct NativeLib {
     pub frameworks: Vec<String>,
     pub link_args: Vec<String>,
     pub triple: String,
+    /// each archive as the build left it (`archive_stamp`): the library is linked from that build
+    pub stamps: Vec<String>,
 }
 
 impl NativeLib {
     /// The shared library of these archives for a program whose foreign items have the symbol
     /// names `imports` (C names): the imports the archives define are its roots, so programs
     /// whose roots are alike share one library. Linked on the first load of those roots, kept
-    /// under the build's key afterwards; the archives as they are (`archive_stamp`) name it, so a
-    /// refreshed build under the same key links a library of its own. Its path.
+    /// under the build's key afterwards. The archives as this build left them (`stamps`) name it:
+    /// a refresh under the same key that rebuilds them in place links a library of its own, and a
+    /// program prepared from the earlier build keeps the library that build linked (relax issue
+    /// 160). Its path; an error when that library is gone and the archives are no longer that
+    /// build's.
     pub fn link_for(&self, imports: &[String], resolvable: Resolvable) -> Result<String, String> {
         let imports: std::collections::HashSet<&str> = imports.iter().map(String::as_str).collect();
         let mut roots = self.archive_symbols()?;
         roots.retain(|name, _| c_name(name).is_some_and(|c| imports.contains(c)));
         let mut h = fnv(b"native-roots-v2", 0xcbf29ce484222325);
-        for a in &self.archives {
+        for (a, stamp) in self.archives.iter().zip(&self.stamps) {
             h = fnv(a.as_bytes(), h);
-            h = fnv(archive_stamp(a).as_bytes(), h);
+            h = fnv(stamp.as_bytes(), h);
         }
         for part in roots.keys() {
             h = fnv(part.as_bytes(), h);
             h = fnv(b"\0", h);
         }
         let ext = if cfg!(target_os = "macos") { "dylib" } else { "so" };
-        let path = format!("{}/libnative-{:016x}.{}", self.dir, h, ext);
+        // (`libnative.` as the build-time library was named: diagnostics and tools look for it)
+        let path = format!("{}/libnative.{:016x}.{}", self.dir, h, ext);
         if !std::path::Path::new(&path).is_file() {
+            if let Some((a, _)) = self.archives.iter().zip(&self.stamps).find(|(a, stamp)| archive_stamp(a) != **stamp) {
+                return Err(format!("the native archive {a} was built again since this program's build (a later build under the same key): start the program again for the new build"));
+            }
             link(&path, self, &roots, resolvable)?;
         }
         Ok(path)
@@ -580,6 +589,7 @@ fn native_lib(g: &Graph, seeds: &[usize], plan: &Plan, out: &Outputs, triple: &s
         link_args: o.link_args.clone(),
         triple: triple.to_string(),
         partial: false,
+        stamps: o.archives.iter().map(|a| archive_stamp(a)).collect(),
     }
 }
 
@@ -653,7 +663,7 @@ pub fn write_receipt(g: &Graph, seeds: &[usize], scripts: &[ScriptOut], lib: Opt
     if let Some(lib) = lib {
         let strings = |v: &[String]| format!("[{}]", v.iter().map(|n| json_string(n)).collect::<Vec<_>>().join(","));
         out.push_str(&format!(
-            ",\"lib\":{{\"dir\":{},\"statics\":{},\"crates\":{},\"archives\":{},\"search\":{},\"fw_search\":{},\"dylibs\":{},\"frameworks\":{},\"link_args\":{},\"triple\":{}}}",
+            ",\"lib\":{{\"dir\":{},\"statics\":{},\"crates\":{},\"archives\":{},\"search\":{},\"fw_search\":{},\"dylibs\":{},\"frameworks\":{},\"link_args\":{},\"triple\":{},\"stamps\":{}}}",
             json_string(&lib.dir),
             strings(&lib.statics),
             strings(&lib.crates),
@@ -664,6 +674,7 @@ pub fn write_receipt(g: &Graph, seeds: &[usize], scripts: &[ScriptOut], lib: Opt
             strings(&lib.frameworks),
             strings(&lib.link_args),
             json_string(&lib.triple),
+            strings(&lib.stamps),
         ));
     }
     out.push('}');
@@ -729,7 +740,9 @@ pub fn read_receipt(path: &str) -> Option<Receipt> {
     let lib = match j.get("lib") {
         Some(l) => {
             let archives = strs(l.get("archives"));
-            if !archives.iter().all(|a| std::path::Path::new(a).is_file()) {
+            let stamps = strs(l.get("stamps"));
+            // (a receipt from before stamps were recorded is not this build's: built again)
+            if stamps.len() != archives.len() || !archives.iter().all(|a| std::path::Path::new(a).is_file()) {
                 return None;
             }
             Some(NativeLib {
@@ -744,6 +757,7 @@ pub fn read_receipt(path: &str) -> Option<Receipt> {
                 link_args: strs(l.get("link_args")),
                 triple: l.get("triple")?.str().to_string(),
                 partial: false,
+                stamps,
             })
         }
         None => None,

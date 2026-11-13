@@ -9,11 +9,12 @@ RUSTFLAGS) are what let the binary find it. `makepad run --allow-c` must do what
 binary does, in the same order of runs, with one native cache:
   no rpath: both fail to load the library (no "no #[no_mangle] fn" callback error);
   loader path: right after, nothing else changed, the loader's path names the folder: the
-            native library that failed to load is not reused but linked again, and runs;
+            program runs (the native library is linked at load for the program's imports: the
+            one that could not find libdemo before finds it now);
   rpath:    both print the answer (the link arguments reach libnative and its key, and the
             callback lookup finds demo_answer in the search folder);
   warm:     the rpath run again reuses the native build;
-  cold:     with the native library gone and cargo's units fresh, the link arguments are read again.
+  cold:     with the native library gone, the load links it again with the link arguments.
 Uses cargo and the system C toolchain; no registry dependency.
 """
 import atexit
@@ -73,9 +74,7 @@ print("PASS no rpath: the native library cannot load libdemo, as the rustc-built
 
 loader = run("loader-path", command, {loader_path: str(sdk)})
 assert loader.stdout == cargo_rpath.stdout, f"the no-rpath build with the loader's path set: {loader.stderr}"
-assert "building native dependencies with cargo" in loader.stderr, (
-    f"the native library that failed to load was used again: {loader.stderr}")
-print("PASS loader path: the native library that failed to load is linked again, and runs")
+print("PASS loader path: with the loader's path set the program runs")
 
 with_rpath = run("rpath", command, rpath)
 assert with_rpath.stdout == cargo_rpath.stdout, f"with the rpath: {with_rpath.stdout}\n{with_rpath.stderr}"
@@ -92,7 +91,7 @@ assert gone, f"no native library under {native}"
 for p in gone:
     p.unlink()
 cold = run("cold", command, rpath)
-assert cold.stdout == cargo_rpath.stdout, f"rebuilt with cargo's units fresh: {cold.stdout}\n{cold.stderr}"
-assert "building native dependencies with cargo" in cold.stderr, cold.stderr
-print("PASS cold: a native build over fresh cargo units links with the program's link arguments")
+assert cold.stdout == cargo_rpath.stdout, f"linked again: {cold.stdout}\n{cold.stderr}"
+assert [p for p in native.glob("*/libnative.*") if p.is_file()], f"no native library linked again under {native}"
+print("PASS cold: the load links the native library again with the program's link arguments")
 
