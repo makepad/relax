@@ -1,0 +1,13 @@
+[package]
+name = "late-macro-cache-example"
+version = "0.0.0"
+edition = "2021"
+
+[workspace]
+members = ["mac"]
+
+[dependencies]
+late-macro = { path = "mac" }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(relax)'] }

@@ -4850,6 +4850,16 @@ static FRONT_REPORTED: AtomicBool = AtomicBool::new(false);
 /// `wait`: the warm record's writes (after first present, at a quit) wait for the owner thread to
 /// complete its work (which a cold run's compiles fill nearly all the time); other writes skip a busy unit.
 fn mid_flush(quiet: bool, wait: bool) -> Option<(usize, usize)> {
+    // A live edit or runtime module can rebuild the macro world after the boot flush.
+    let macro_write = crate::pmhost::take_cache_spills();
+    let mode = if EXIT_STAGE.load(Ordering::Acquire) != 0 || jit::QUIT_SEEN.load(Ordering::Acquire) {
+        crate::pmhost::CacheWriteMode::Exit
+    } else { crate::pmhost::CacheWriteMode::Periodic };
+    match macro_write.write(mode) {
+        Ok(entries) if entries > 0 => verbose!("relax cache: proc-macro mid write: {entries} entries"),
+        Err(error) => verbose!("relax cache: proc-macro write: {error}"),
+        _ => {}
+    }
     // the compiled kernels offered so far
     crate::kernel_store::flush();
     // the first write comes after the start: the mapped front images are checksummed now
@@ -5121,8 +5131,10 @@ fn summary_inner(why: &str) {
         }
         true
     };
-    let rest = || {
+    let mut macro_spills = None;
+    let mut rest = || {
         if why != "stats" {
+            macro_spills = Some(crate::pmhost::take_cache_spills());
             let (ms, site) = jit::main_post_present_wait();
             verbose!("relax: main thread's longest unit-call wait after first present: {:.1} ms ({})", ms, site);
             verbose!("{}", crate::postframe::summary());
@@ -5529,6 +5541,9 @@ fn summary_inner(why: &str) {
         }
     } else if crate::owner::call_within(crate::owner::Class::Program, exit_quiesce_ms(), || { if preamble(true) { rest(); } }).is_none() {
         preamble(false);
+    }
+    if let Some(spills) = macro_spills {
+        if let Err(error) = spills.write(crate::pmhost::CacheWriteMode::Exit) { verbose!("relax cache: proc-macro exit write: {error}"); }
     }
 }
 

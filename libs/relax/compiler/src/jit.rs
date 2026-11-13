@@ -9981,7 +9981,7 @@ impl Unit {
     }
 
     /// Encodes up to `count` deferred cache records, in install order (owner thread). True: more are left.
-    fn record_cache_batch(&mut self, count: usize) -> bool {
+    pub(crate) fn record_cache_batch(&mut self, count: usize) -> bool {
         if self.pending_cache_records.is_empty() { return false; }
         let Some(mut cache) = self.cache.take() else { return false };
         let end = self.pending_cache_cursor.saturating_add(count).min(self.pending_cache_records.len());
@@ -23240,7 +23240,7 @@ pub extern "C" fn relax_first_present() {
 /// Deferred cache records encoded per publish (rule I-PUB: bounded by an item count). A publish is
 /// not interrupted, so a program thread's next request waits for the batch that is running
 /// (~10 us per record on an app); the owner serves the program's requests between two batches.
-const RECORD_BATCH: usize = 8;
+pub(crate) const RECORD_BATCH: usize = 8;
 
 /// Releases speculation, O1 inline candidates and O3 at the first present, never on wall
 /// time (a large app needs 40-58 s from main to present; a clock released speculation in the middle

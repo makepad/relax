@@ -6,7 +6,7 @@
 //! every proc-macro crate of the graph and their dependencies), Tcx and JIT Unit. A call
 //! encodes the input tokens (pm.rs `encode`), calls `proc_macro::__relax::bridge` in the world
 //! with the macro fn's address, and decodes the output. Functions compile lazily on first call,
-//! like any Relax code; the world lives for the process (later calls reuse it).
+//! like any Relax code. Loading frees its world; later expansions rebuild and reuse one.
 //!
 //! Trust: the process's policy for third-party compile-time code (sandbox.rs `Policy`, chosen by
 //! the entry point):
@@ -131,7 +131,7 @@ pub fn install() {
 /// their files' macros themselves. Its code compiles on the owner thread like any JIT code; the
 /// tables below are behind their own locks.
 struct World {
-    /// leaked: the world lives for the process (program threads share a unit the same way)
+    /// Owned until the last world reference drops; retirement quiesces its compiler jobs.
     u: *mut crate::jit::Unit,
     bridge: u64,
     /// unit index -> crate index in the world
@@ -147,6 +147,8 @@ struct World {
     /// unit -> why its crate is not in the world: it did not load, or a crate it builds on did not
     /// (its macros report that; every other crate's macros work)
     failed: Vec<Option<String>>,
+    free_requested: std::sync::atomic::AtomicBool,
+    cache_pins: std::sync::atomic::AtomicUsize,
 }
 
 impl Drop for World {
@@ -158,7 +160,15 @@ impl Drop for World {
                 crate::sandbox::free_arena(&*self.u, a);
             }
             crate::jit::retire_unit(self.u);
-            drop(Box::from_raw(self.u));
+            let mut unit = Box::from_raw(self.u);
+            // Retirement made this unit exclusive and encoded its last deferred records.
+            if let Some(spill) = unit.cache.as_mut().and_then(|cache| cache.spill_take()) {
+                if let Err(error) = spill.write() {
+                    if crate::run::VERBOSE.load(std::sync::atomic::Ordering::Relaxed) {
+                        eprintln!("relax cache: retired proc-macro write: {error}");
+                    }
+                }
+            }
         }
     }
 }
@@ -212,17 +222,22 @@ fn world_now() -> Option<std::sync::Arc<Result<World, String>>> {
     WORLD.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
+fn reuse_world(world: std::sync::Arc<Result<World, String>>) -> std::sync::Arc<Result<World, String>> {
+    if let Ok(w) = world.as_ref() { w.free_requested.store(false, std::sync::atomic::Ordering::Release); }
+    world
+}
+
 fn world_for(sess: &std::sync::Arc<crate::Session>, unit: usize) -> Option<std::sync::Arc<Result<World, String>>> {
     if in_world() {
         return None;
     }
     if let Some(w) = world_now() {
-        return Some(w);
+        return Some(reuse_world(w));
     }
     let stage = BOOT_WORLDS.lock().unwrap_or_else(|e| e.into_inner()).iter()
         .find(|bw| bw.as_ref().as_ref().is_ok_and(|w| w.crate_of.get(unit).copied().unwrap_or(u32::MAX) != u32::MAX || w.failed.get(unit).is_some_and(Option::is_some))).cloned();
-    if stage.is_some() {
-        return stage;
+    if let Some(w) = stage {
+        return Some(reuse_world(w));
     }
     world(sess)
 }
@@ -243,7 +258,7 @@ fn world_inner(sess: &std::sync::Arc<crate::Session>, prewarm: bool) -> Option<s
         return None;
     }
     if let Some(w) = world_now() {
-        return Some(w);
+        return Some(reuse_world(w));
     }
     let t = std::time::Instant::now();
     // Any non-prewarm caller is a macro expansion on a demand, parse, or loader thread waiting for
@@ -254,7 +269,7 @@ fn world_inner(sess: &std::sync::Arc<crate::Session>, prewarm: bool) -> Option<s
     if let Some(w) = world_now() {
         tl_add(4, 1.0);
         tl_add(5, t.elapsed().as_secs_f64() * 1e3);
-        return Some(w);
+        return Some(reuse_world(w));
     }
     tl_set_once(0, crate::clock::ms_since_start());
     // restored also when build_world panics (the thread may be a pool worker that goes on)
@@ -325,6 +340,13 @@ pub fn world_alive() -> bool {
 }
 
 pub fn free_world() -> bool {
+    free_worlds(Free::All)
+}
+
+enum Free { All, Requested }
+
+fn free_worlds(which: Free) -> bool {
+    let requested_only = match which { Free::All => false, Free::Requested => true };
     // A build in flight keeps the stage worlds until it is done: the final world's crates that use
     // a stage's macros expand them there (world_for), and nothing else holds a stage. The load
     // does not wait for every thread that can start a build (a demand plan's discovery runs a
@@ -334,6 +356,19 @@ pub fn free_world() -> bool {
     // The worlds stay for a later free. BUILDING is held only while they are taken: dropping
     // one retires its unit, which parks every compile job, and a thread that waits for BUILDING
     // must not wait behind that.
+    let can_free = |world: &std::sync::Arc<Result<World, String>>| {
+        if requested_only && !world.as_ref().as_ref().is_ok_and(|w| w.free_requested.load(std::sync::atomic::Ordering::Acquire)) {
+            return false;
+        }
+        let free = std::sync::Arc::strong_count(world) == 1;
+        if !free {
+            if let Ok(w) = world.as_ref() {
+                let only_cache = std::sync::Arc::strong_count(world) == 1 + w.cache_pins.load(std::sync::atomic::Ordering::Acquire);
+                if only_cache { w.free_requested.store(true, std::sync::atomic::Ordering::Release); }
+            }
+        }
+        free
+    };
     let (bw, w) = {
         let _building = match BUILDING.try_lock() {
             Ok(held) => held,
@@ -342,7 +377,7 @@ pub fn free_world() -> bool {
         };
         let bw: Vec<_> = {
             let mut g = BOOT_WORLDS.lock().unwrap_or_else(|e| e.into_inner());
-            let (free, keep): (Vec<_>, Vec<_>) = g.drain(..).partition(|w| std::sync::Arc::strong_count(w) == 1);
+            let (free, keep): (Vec<_>, Vec<_>) = g.drain(..).partition(|w| can_free(w));
             *g = keep;
             free
         };
@@ -354,7 +389,7 @@ pub fn free_world() -> bool {
             // loader holds a compile job and waits for it, so the park would wait forever. Nobody
             // clones it without this lock: a count of 1 here stays 1.
             match g.as_ref() {
-                Some(w) if std::sync::Arc::strong_count(w) == 1 => g.take(),
+                Some(w) if can_free(w) => g.take(),
                 _ => None,
             }
         };
@@ -736,7 +771,7 @@ fn build_world_once(sess: &std::sync::Arc<crate::Session>, units: &[crate::macro
         s.set(x);
     });
     let confined = (0..units.len()).map(|i| need[i] && confined[i]).collect();
-    Ok(World { u: Box::into_raw(u), bridge, crate_of, entries: Default::default(), broken: Default::default(), confined, sandbox, failed: Vec::new() })
+    Ok(World { u: Box::into_raw(u), bridge, crate_of, entries: Default::default(), broken: Default::default(), confined, sandbox, failed: Vec::new(), free_requested: std::sync::atomic::AtomicBool::new(false), cache_pins: std::sync::atomic::AtomicUsize::new(0) })
 }
 
 /// Address of macro fn `fname` at the root of unit `unit`'s crate in the world.
@@ -1043,12 +1078,94 @@ fn call_confined(w: &World, arena: &crate::sandbox::Arena, bridge_twin: u64, io:
     bytes.map(Ok).ok_or_else(|| "the proc macro's output lies outside its arena".to_string())
 }
 
+struct WorldPins {
+    worlds: Vec<std::sync::Arc<Result<World, String>>>,
+}
+
+impl Drop for WorldPins {
+    fn drop(&mut self) {
+        let _stages = BOOT_WORLDS.lock().unwrap_or_else(|e| e.into_inner());
+        let _world = WORLD.lock().unwrap_or_else(|e| e.into_inner());
+        for world in &self.worlds {
+            if let Ok(w) = world.as_ref() { w.cache_pins.fetch_sub(1, std::sync::atomic::Ordering::AcqRel); }
+        }
+        self.worlds.clear();
+    }
+}
+
+fn pin_worlds() -> WorldPins {
+    let stages = BOOT_WORLDS.lock().unwrap_or_else(|e| e.into_inner());
+    let current = WORLD.lock().unwrap_or_else(|e| e.into_inner());
+    let worlds = stages.iter().chain(current.iter()).filter_map(|world| {
+        let Ok(w) = world.as_ref() else { return None };
+        w.cache_pins.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        Some(world.clone())
+    }).collect();
+    WorldPins { worlds }
+}
+
+#[cfg(test)]
+static CACHE_CAPTURE_TEST: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>> = std::sync::Mutex::new(None);
+
+#[must_use = "write the captured macro cache records off the owner thread"]
+pub(crate) struct CacheWrite {
+    spills: Vec<crate::cache::Spill>,
+}
+
+pub(crate) enum CacheWriteMode { Periodic, Exit }
+
+impl CacheWrite {
+    /// Off the owner: write records. Periodic writes retry frees; exit teardown does its own.
+    pub(crate) fn write(self, mode: CacheWriteMode) -> Result<usize, String> {
+        let mut written = 0;
+        let mut first_error = None;
+        for spill in self.spills {
+            match spill.write() {
+                Ok(n) => written += n,
+                Err(error) => { first_error.get_or_insert(error); }
+            }
+        }
+        match mode {
+            CacheWriteMode::Periodic => { free_worlds(Free::Requested); }
+            CacheWriteMode::Exit => {}
+        }
+        first_error.map_or(Ok(written), Err)
+    }
+}
+
+/// Capture late macro code on the owner; the caller writes the owned spills off it.
+/// Temporary references keep the units live; a free they block is retried off the owner.
+pub(crate) fn take_cache_spills() -> CacheWrite {
+    let worlds = pin_worlds();
+    #[cfg(test)]
+    {
+        let hook = CACHE_CAPTURE_TEST.lock().unwrap().take();
+        if let Some(hook) = hook { hook(); }
+    }
+    for world in &worlds.worlds {
+        if let Ok(world) = world.as_ref() {
+            while crate::owner::call(crate::owner::Class::Program, || unsafe {
+                (&mut *world.u).record_cache_batch(crate::jit::RECORD_BATCH)
+            }) {}
+        }
+    }
+    let spills = if worlds.worlds.is_empty() { Vec::new() } else { crate::owner::call(crate::owner::Class::Program, || {
+        worlds.worlds.iter().filter_map(|world| {
+            let Ok(world) = world.as_ref() else { return None };
+            let u = unsafe { &mut *world.u };
+            u.cache.as_mut().and_then(|cache| cache.spill_take())
+        }).collect()
+    }) };
+    drop(worlds);
+    CacheWrite { spills }
+}
+
 /// After the program's files are loaded (no more expansions): the world's newly compiled code
 /// goes to the disk cache.
 pub fn flush_cache() {
-    let stages = BOOT_WORLDS.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    for w in stages.into_iter().map(Some).chain([world_now()]) {
-        if let Some(Ok(w)) = w.as_deref() {
+    let worlds = pin_worlds();
+    for world in &worlds.worlds {
+        if let Ok(w) = world.as_ref() {
             crate::owner::call(crate::owner::Class::Program, || {
                 let u = unsafe { &mut *w.u };
                 u.flush_cache_records();
@@ -1118,6 +1235,126 @@ mod tests {
         crate::preload::SINGLE.with(|s| s.set(false));
     }
 
+
+    fn test_world(mut unit: Box<crate::jit::Unit>) -> std::sync::Arc<Result<super::World, String>> {
+        unit.aux = true;
+        std::sync::Arc::new(Ok(super::World {
+            u: Box::into_raw(unit), bridge: 0, crate_of: vec![0],
+            entries: Default::default(), broken: Default::default(), confined: vec![false], sandbox: Err("no arena in this test".into()), failed: Vec::new(),
+            free_requested: std::sync::atomic::AtomicBool::new(false),
+            cache_pins: std::sync::atomic::AtomicUsize::new(0),
+        }))
+    }
+
+
+    fn cache_unit(dir: &std::path::Path) -> Box<crate::jit::Unit> {
+        std::fs::create_dir_all(dir).unwrap();
+        let source = dir.join("lib.rs");
+        std::fs::write(&source, "pub fn value() -> u32 { 42 }").unwrap();
+        let session = std::sync::Arc::new(crate::Session::default());
+        let mut prog = crate::program::Program::new(&session);
+        prog.load_crate("macro_body", source.to_str().unwrap(), 2021, crate::cfg::CfgSet::host(&session, &[]), Vec::new()).unwrap();
+        let mut tcx = crate::tcx::Tcx::new();
+        tcx.collect(&prog);
+        crate::jit::Unit::new(prog, tcx, 0)
+    }
+
+    #[test]
+    fn a_failed_world_write_does_not_discard_the_other_worlds_records() {
+        isolated_test!(a_failed_world_write_does_not_discard_the_other_worlds_records);
+        let dir = std::env::temp_dir().join(format!("relax-world-write-error-{}", std::process::id()));
+        for (name, stage) in [("bad", true), ("good", false)] {
+            let mut unit = cache_unit(&dir.join(name));
+            let mut cache = crate::cache::Cache::open_in(&unit, crate::cache::Mode::On, dir.join(format!("{name}-cache"))).unwrap();
+            cache.record_test_warnings(&[7], &[format!("{name} world")]);
+            unit.cache = Some(Box::new(crate::cache::CacheCell::new(cache)));
+            if stage { super::BOOT_WORLDS.lock().unwrap().push(test_world(unit)); }
+            else { *super::WORLD.lock().unwrap() = Some(test_world(unit)); }
+        }
+        let write = super::take_cache_spills();
+        std::fs::rename(dir.join("bad-cache"), dir.join("parked-cache")).unwrap();
+        std::fs::write(dir.join("bad-cache"), "not a directory").unwrap();
+        assert!(write.write(super::CacheWriteMode::Exit).is_err(), "the blocked cache root must fail");
+        let unit = cache_unit(&dir.join("good"));
+        let cache = crate::cache::Cache::open_in(&unit, crate::cache::Mode::On, dir.join("good-cache")).unwrap();
+        assert_eq!(cache.test_warnings(&[7]), Some(vec!["good world".into()]), "one failed spill discarded the next world's records");
+        assert_eq!(cache.test_warnings(&[8]), None);
+        super::free_world();
+    }
+
+    #[test]
+    fn retiring_a_world_persists_its_remaining_cache_records() {
+        isolated_test!(retiring_a_world_persists_its_remaining_cache_records);
+        let dir = std::env::temp_dir().join(format!("relax-world-retire-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut first = cache_unit(&dir);
+        let mut cache = crate::cache::Cache::open_in(&first, crate::cache::Mode::On, dir.join("cache")).unwrap();
+        cache.record_test_warnings(&[7], &["late macro record".into()]);
+        first.cache = Some(Box::new(crate::cache::CacheCell::new(cache)));
+        drop(test_world(first));
+        let second = cache_unit(&dir);
+        let cache = crate::cache::Cache::open_in(&second, crate::cache::Mode::On, dir.join("cache")).unwrap();
+        assert_eq!(cache.test_warnings(&[7]), Some(vec!["late macro record".into()]), "world retirement lost pending cache records");
+        assert_eq!(cache.test_warnings(&[8]), None);
+    }
+
+    #[test]
+    fn cache_capture_retries_only_requested_worlds() {
+        isolated_test!(cache_capture_retries_only_requested_worlds);
+        use std::sync::{Arc, mpsc};
+        use std::time::Duration;
+        fn world() -> Arc<Result<super::World, String>> {
+            let session = Arc::new(crate::Session::default());
+            test_world(crate::jit::Unit::new(crate::program::Program::new(&session), crate::tcx::Tcx::new(), 0))
+        }
+        fn paused_capture() -> super::CacheWrite {
+            let (ready, started) = mpsc::sync_channel(0);
+            let (release, resume) = mpsc::sync_channel(0);
+            *super::CACHE_CAPTURE_TEST.lock().unwrap() = Some(Box::new(move || {
+                ready.send(()).unwrap();
+                resume.recv_timeout(Duration::from_secs(30)).unwrap();
+            }));
+            let capture = std::thread::spawn(super::take_cache_spills);
+            started.recv_timeout(Duration::from_secs(30)).unwrap();
+            super::free_world();
+            release.send(()).unwrap();
+            capture.join().unwrap()
+        }
+        for scenario in ["free", "replace", "reuse", "reuse-stage", "active", "exit"] {
+            super::BOOT_WORLDS.lock().unwrap().push(world());
+            *super::WORLD.lock().unwrap() = Some(world());
+            let active = (scenario == "active").then(|| super::world_for(&Arc::new(crate::Session::default()), 0).unwrap());
+            let write = paused_capture();
+            drop(active);
+            let expected = match scenario {
+                "replace" => {
+                    assert!(super::free_world());
+                    super::BOOT_WORLDS.lock().unwrap().push(world());
+                    *super::WORLD.lock().unwrap() = Some(world());
+                    (true, true)
+                }
+                "reuse" => {
+                    drop(super::world_for(&Arc::new(crate::Session::default()), 0).unwrap());
+                    (true, false)
+                }
+                "reuse-stage" => {
+                    let old = super::WORLD.lock().unwrap().take();
+                    drop(old);
+                    drop(super::world_for(&Arc::new(crate::Session::default()), 0).unwrap());
+                    (false, true)
+                }
+                "active" => (true, false),
+                "exit" => (true, true),
+                _ => (false, false),
+            };
+            let mode = if scenario == "exit" { super::CacheWriteMode::Exit } else { super::CacheWriteMode::Periodic };
+            write.write(mode).unwrap();
+            assert_eq!(super::WORLD.lock().unwrap().is_some(), expected.0, "cache write retirement: {scenario}");
+            assert_eq!(!super::BOOT_WORLDS.lock().unwrap().is_empty(), expected.1, "cache write stage retirement: {scenario}");
+            super::free_world();
+        }
+        assert!(!super::world_alive());
+    }
     /// The worlds stay while a world is being built (BUILDING held by its builder): the build's
     /// crates expand a stage's macros there. A free after the build takes them.
     #[test]
