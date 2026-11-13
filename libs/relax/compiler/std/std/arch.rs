@@ -35,6 +35,13 @@ pub mod detect {
         Rdm = 11,
         I8mm = 12,
         Bf16 = 13,
+        // x86_64 continued (the remaining low-word bits).
+        AvxVnniInt8 = 14,
+        AvxVnniInt16 = 15,
+        Sse4a = 16,
+        AvxIfma = 17,
+        Sm3 = 18,
+        Sm4x86 = 19,
         // x86_64
         Sse = 20,
         Sse2 = 21,
@@ -78,6 +85,10 @@ pub mod detect {
         Avx512bitalg = 59,
         Avx512vpopcntdq = 60,
         Avxvnni = 61,
+        Avx512vp2intersect = 62,
+        // Keep the aarch64 feature bits below unchanged.
+        Sha512 = 106,
+        Tbm = 107,
         // aarch64, the rest of std_detect's list (bits 64 on)
         Bti = 64,
         Cssc = 65,
@@ -245,6 +256,9 @@ pub mod detect {
         // Intel SKL052: affected non-AVX chips falsely advertise BMI1/BMI2.
         let intel = root.ebx == 0x756e6547 && root.edx == 0x49656e69 && root.ecx == 0x6c65746e;
         let bmi = !intel || avx;
+        // std_detect x86.rs: SSE4A is only reported for AMD/Hygon vendors.
+        let amd = (root.ebx == 0x68747541 && root.edx == 0x69746e65 && root.ecx == 0x444d4163)
+            || (root.ebx == 0x6f677948 && root.edx == 0x6e65476e && root.ecx == 0x656e6975);
         bit(Feature::Sse, p.edx & (1 << 25) != 0)
             | bit(Feature::Sse2, p.edx & (1 << 26) != 0)
             | bit(Feature::Sse3, p.ecx & 1 != 0)
@@ -288,6 +302,18 @@ pub mod detect {
             | bit(Feature::Avx512bitalg, avx512 && e.ecx & (1 << 12) != 0)
             | bit(Feature::Avx512vpopcntdq, avx512 && e.ecx & (1 << 14) != 0)
             | bit(Feature::Avxvnni, avx && e1.eax & (1 << 4) != 0)
+            // std_detect x86.rs: AVX-VNNI-INT8/-INT16 are leaf 7.1 EDX.
+            | bit(Feature::AvxVnniInt8, avx && e1.edx & (1 << 4) != 0)
+            | bit(Feature::AvxVnniInt16, avx && e1.edx & (1 << 10) != 0)
+            | bit(Feature::Sse4a, amd && ext & (1 << 6) != 0)
+            // std_detect x86.rs: SHA512/SM3/SM4/AVX-IFMA are leaf 7.1 EAX,
+            // VP2INTERSECT is leaf 7.0 EDX gated on AVX-512 OS support.
+            | bit(Feature::AvxIfma, avx && e1.eax & (1 << 23) != 0)
+            | bit(Feature::Sm3, avx && e1.eax & (1 << 1) != 0)
+            | bit(Feature::Sm4x86, avx && e1.eax & (1 << 2) != 0)
+            | bit(Feature::Avx512vp2intersect, avx512 && e.edx & (1 << 8) != 0)
+            | bit(Feature::Sha512, avx512 && e.ebx & (1 << 16) != 0 && e1.eax & 1 != 0)
+            | bit(Feature::Tbm, root.ebx == 0x68747541 && root.ecx == 0x444d4163 && root.edx == 0x69746e65 && ext & (1 << 21) != 0)
     }
 
     #[cfg(all(any(target_os = "linux", target_os = "android"), target_arch = "aarch64"))]
@@ -511,6 +537,15 @@ macro_rules! is_x86_feature_detected {
     ("avx512bitalg") => { cfg!(target_feature = "avx512bitalg") || $crate::arch::detect::check($crate::arch::detect::Feature::Avx512bitalg) };
     ("avx512vpopcntdq") => { cfg!(target_feature = "avx512vpopcntdq") || $crate::arch::detect::check($crate::arch::detect::Feature::Avx512vpopcntdq) };
     ("avxvnni") => { cfg!(target_feature = "avxvnni") || $crate::arch::detect::check($crate::arch::detect::Feature::Avxvnni) };
+    ("avxvnniint8") => { cfg!(target_feature = "avxvnniint8") || $crate::arch::detect::check($crate::arch::detect::Feature::AvxVnniInt8) };
+    ("avxvnniint16") => { cfg!(target_feature = "avxvnniint16") || $crate::arch::detect::check($crate::arch::detect::Feature::AvxVnniInt16) };
+    ("sse4a") => { cfg!(target_feature = "sse4a") || $crate::arch::detect::check($crate::arch::detect::Feature::Sse4a) };
+    ("avxifma") => { cfg!(target_feature = "avxifma") || $crate::arch::detect::check($crate::arch::detect::Feature::AvxIfma) };
+    ("sm3") => { cfg!(target_feature = "sm3") || $crate::arch::detect::check($crate::arch::detect::Feature::Sm3) };
+    ("sm4") => { cfg!(target_feature = "sm4") || $crate::arch::detect::check($crate::arch::detect::Feature::Sm4x86) };
+    ("avx512vp2intersect") => { cfg!(target_feature = "avx512vp2intersect") || $crate::arch::detect::check($crate::arch::detect::Feature::Avx512vp2intersect) };
+    ("sha512") => { cfg!(target_feature = "sha512") || $crate::arch::detect::check($crate::arch::detect::Feature::Sha512) };
+    ("tbm") => { cfg!(target_feature = "tbm") || $crate::arch::detect::check($crate::arch::detect::Feature::Tbm) };
     ($t:tt,) => { $crate::is_x86_feature_detected!($t) };
     ($t:tt) => { compile_error!(concat!("unknown x86 target feature: ", $t)) };
 }
