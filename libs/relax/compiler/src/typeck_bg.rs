@@ -1,11 +1,12 @@
 //! `makepad run`'s background type check. Type checking on the startup path is demand-driven (a
 //! build checks the bodies it needs, the ahead helpers the ones its callers are about to need);
 //! every body is still checked (the user's rule, 2026-11-02). After the first present (a headless
-//! program: once main runs) one thread at the compile workers' low priority type-checks every body
-//! owner of the dependency crates -- first what main reaches (the fns its checked bodies name,
-//! depth first), then every other owner, crate by crate -- yielding while the program's threads
-//! compile. An error is reported at once, as a compile error of code that has not run (stderr, the
-//! launcher's report, the run's diagnostics), whether that code ever runs or not; the program
+//! program: once main runs) the check workers, at the compile workers' low priority, type-check
+//! every body owner of the dependency crates -- first what main reaches (the fns its checked
+//! bodies name, depth first) on the owner thread, then every other owner, crate by crate, on the
+//! background workers -- yielding while the program's threads compile. An error is reported at
+//! once, as a compile error of code that has not run (stderr, the launcher's report, the run's
+//! diagnostics), whether that code ever runs or not; the program
 //! itself never runs unchecked code (a build checks its body first, jit.rs). A crate whose every
 //! body is clean stores its verdict (cache.rs crate_check_key), so a later run checks only what
 //! changed, as cargo builds a dependency once. Not checked here: the app's own crates (checked
@@ -91,6 +92,15 @@ enum Checked {
     Stop,
 }
 
+/// The crates with an error, shared by the phase-B workers (a crate's clean verdict is not stored
+/// while one of its bodies failed). One insert per crate: the same crate's bodies fail together.
+struct Failed(relax_session::sync::Mutex<HashSet<u32>>);
+impl Failed {
+    fn new() -> Self { Self(relax_session::sync::Mutex::new(HashSet::new())) }
+    fn insert(&self, k: u32) { self.0.lock().unwrap_or_else(|e| e.into_inner()).insert(k); }
+    fn contains(&self, k: u32) -> bool { self.0.lock().unwrap_or_else(|e| e.into_inner()).contains(&k) }
+}
+
 fn run(up: *mut Unit, root: u32, main: Option<DefId>) {
     while !jit::past_startup() {
         if stopping() { return; }
@@ -106,13 +116,13 @@ fn run(up: *mut Unit, root: u32, main: Option<DefId>) {
     let (todo, keys) = crate::owner::call(crate::owner::Class::Publish, || todo_crates(unsafe { &*(upn as *const Unit) }, root, &skipped_text));
     if !todo.contains(&true) { return finish(t0, w0); }
     let mut seen: HashSet<DefId> = HashSet::new();
-    let mut failed: HashSet<u32> = HashSet::new();
+    let failed = Failed::new();
     let mut stored: HashSet<u32> = HashSet::new();
     // what main reaches, depth first (named_fns' order)
     let mut stack: Vec<DefId> = main.into_iter().collect();
     while let Some(d) = stack.pop() {
         if !seen.insert(d) { continue; }
-        match check(&f, d, &todo, &mut failed) {
+        match check(&f, d, &todo, &failed) {
             Checked::Done(named) => stack.extend(named.into_iter().rev().filter(|d| !seen.contains(d))),
             Checked::Later => { seen.remove(&d); }
             Checked::Stop => return,
@@ -125,14 +135,45 @@ fn run(up: *mut Unit, root: u32, main: Option<DefId>) {
             let r = jit::front_read("typeck bg owners");
             let (prog, _) = r.of(&f);
             let crates: Vec<u32> = (0..prog.crates.len() as u32).filter(|&k| todo.get(k as usize).copied().unwrap_or(false)).collect();
-            let owners: Vec<DefId> = crate::check::body_owners(prog, &crates).into_iter().filter(|d| !seen.contains(d)).collect();
+            // one entry per owner: an item's defs all name it, so the serial walk would check
+            // the same owner once per def
+            let mut uniq: HashSet<DefId> = HashSet::new();
+            let owners: Vec<DefId> = crate::check::body_owners(prog, &crates).into_iter()
+                .filter(|d| !seen.contains(d) && uniq.insert(*d)).collect();
             let skipped: HashSet<u32> = prog.skipped_files.keys().map(|&m| prog.mods[m as usize].krate).collect();
             (owners, skipped)
         };
         let mut pending: HashSet<u32> = HashSet::new();
-        for d in owners {
-            seen.insert(d);
-            match check(&f, d, &todo, &mut failed) {
+        // every other owner, the bulk of a cold run's bodies, on its own worker: the reachability
+        // walk above is the priority and stays serial. A worker yields to the program's own builds
+        // at the body's preempt points, as the serial walk did, so a burst of lazy compiles is not
+        // held behind the check.
+        for &d in &owners { seen.insert(d); }
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        let results: Vec<(DefId, Checked)> = std::thread::scope(|sc| {
+            let workers = makepad_cpu_budget::background_limit().max(1) as usize;
+            let mut hs = Vec::with_capacity(workers.min(owners.len()).max(1));
+            for _ in 0..workers.min(owners.len()).max(1) {
+                let (owners, next, f, todo, failed) = (&owners, &next, &f, &todo, &failed);
+                hs.push(std::thread::Builder::new().name("run-typeck-bg-w".into()).stack_size(256 << 20).spawn_scoped(sc, move || {
+                    let _z = crate::zone_alloc::compiler_thread();
+                    makepad_cpu_budget::set_thread_class(makepad_cpu_budget::BACKGROUND);
+                    let mut local: Vec<(DefId, Checked)> = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(&d) = owners.get(i) else { break };
+                        let c = check(f, d, todo, failed);
+                        let stop = matches!(c, Checked::Stop);
+                        local.push((d, c));
+                        if stop { break; }
+                    }
+                    local
+                }).expect("run-typeck-bg worker"));
+            }
+            hs.into_iter().flat_map(|h| match h.join() { Ok(v) => v, Err(e) => std::panic::resume_unwind(e) }).collect()
+        });
+        for (d, c) in results {
+            match c {
                 Checked::Done(_) => {}
                 Checked::Later => {
                     seen.remove(&d);
@@ -148,7 +189,7 @@ fn run(up: *mut Unit, root: u32, main: Option<DefId>) {
         // which the keys name.
         let boot = crate::reload::program_edits() == 0;
         for k in 0..todo.len() as u32 {
-            if boot && todo[k as usize] && !failed.contains(&k) && !skipped.contains(&k) && !pending.contains(&k) && stored.insert(k) {
+            if boot && todo[k as usize] && !failed.contains(k) && !skipped.contains(&k) && !pending.contains(&k) && stored.insert(k) {
                 if let Some(key) = keys[k as usize] { crate::borrowck::lazy::push_verdict_key(key, crate::borrowck::lazy::StoredVerdict::Clean); }
                 STATS[2].fetch_add(1, Ordering::Relaxed);
             }
@@ -178,7 +219,7 @@ fn finish(t0: u64, w0: u64) {
 
 /// Type-checks body owner `d` of a crate this check covers and reports its errors; a body of any
 /// other crate is only read when a build checked it already (the walk goes on through it).
-fn check(f: &FrontShared, d: DefId, todo: &[bool], failed: &mut HashSet<u32>) -> Checked {
+fn check(f: &FrontShared, d: DefId, todo: &[bool], failed: &Failed) -> Checked {
     loop {
         if stopping() { return Checked::Stop; }
         // the program's own compiles go first (a burst of the UI thread's lazy compiles)

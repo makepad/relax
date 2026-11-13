@@ -211,12 +211,31 @@ pub fn verify_front_images() {
     { let _k = crate::zone_alloc::kept();
     let _ = crate::run_threads::spawn("run-cache-verify", move || { let _z = crate::zone_alloc::compiler_thread();
         makepad_cpu_budget::set_thread_class(makepad_cpu_budget::BACKGROUND);
-        let mut bad: Vec<std::path::PathBuf> = Vec::new();
-        for (st, i) in &used {
-            if !st.verify_at(*i) && !bad.contains(&st.path) {
-                bad.push(st.path.clone());
+        // The stores' checksums are read back and hashed off workers: the entries are independent,
+        // and one thread is I/O bound (a cold run's images are read whole). A mismatch is reported
+        // once its store is named, so the workers only collect the paths.
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        let mut bad: Vec<std::path::PathBuf> = std::thread::scope(|sc| {
+            let workers = makepad_cpu_budget::background_limit().max(1) as usize;
+            let mut hs = Vec::with_capacity(workers.min(used.len()).max(1));
+            for _ in 0..workers.min(used.len()).max(1) {
+                let (used, next) = (&used, &next);
+                hs.push(std::thread::Builder::new().name("run-cache-verify-w".into()).stack_size(256 << 20).spawn_scoped(sc, move || {
+                    let _z = crate::zone_alloc::compiler_thread();
+                    makepad_cpu_budget::set_thread_class(makepad_cpu_budget::BACKGROUND);
+                    let mut bad: Vec<std::path::PathBuf> = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some((st, i)) = used.get(i) else { break };
+                        if !st.verify_at(*i) && !bad.contains(&st.path) { bad.push(st.path.clone()); }
+                    }
+                    bad
+                }).expect("run-cache-verify worker"));
             }
-        }
+            hs.into_iter().flat_map(|h| match h.join() { Ok(v) => v, Err(e) => std::panic::resume_unwind(e) }).collect()
+        });
+        bad.sort_unstable();
+        bad.dedup();
         for p in bad {
             if crate::run::VERBOSE.load(std::sync::atomic::Ordering::Relaxed) {
                 eprintln!("relax cache: a front image in {} does not match its checksum: the store is removed (the next run rebuilds it)", p.display());
