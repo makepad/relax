@@ -11801,6 +11801,126 @@ fn a0784_mm_ucomineq_ss() {
     unsafe { for n in 0..512 { probe_mm_ucomineq_ss(core::hint::black_box(n), &mut d); } }
     d.line("_mm_ucomineq_ss", "none");
 }
+    #[inline(never)]
+    unsafe fn probe_mm256_abs_epi16(n: usize, h: &mut Digest) {
+        if feat("avx2") {
+            let out = _mm256_abs_epi16(input(n+0));
+            mix(h, &out);
+        }
+    }
+
+    #[inline(never)]
+    unsafe fn probe_mm256_abs_epi32(n: usize, h: &mut Digest) {
+        if feat("avx2") {
+            let out = _mm256_abs_epi32(input(n+0));
+            mix(h, &out);
+        }
+    }
+
+    #[inline(never)]
+    unsafe fn probe_mm256_abs_epi64(n: usize, h: &mut Digest) {
+        if feat("avx2") {
+            let out = _mm256_abs_epi64(input(n+0));
+            mix(h, &out);
+        }
+    }
+
+    #[inline(never)]
+    unsafe fn probe_mm256_add_pd(n: usize, h: &mut Digest) {
+        if feat("avx") {
+            let out = _mm256_add_pd(float_input(n+0), float_input(n+5));
+            mix(h, &out);
+        }
+    }
+
+    #[inline(never)]
+    unsafe fn probe_mm256_adds_epi16(n: usize, h: &mut Digest) {
+        if feat("avx2") {
+            let out = _mm256_adds_epi16(input(n+0), input(n+5));
+            mix(h, &out);
+        }
+    }
+
+    #[inline(never)]
+    unsafe fn probe_mm256_adds_epi8(n: usize, h: &mut Digest) {
+        if feat("avx2") {
+            let out = _mm256_adds_epi8(input(n+0), input(n+5));
+            mix(h, &out);
+        }
+    }
+
+    #[inline(never)]
+    unsafe fn probe_mm256_adds_epu16(n: usize, h: &mut Digest) {
+        if feat("avx2") {
+            let out = _mm256_adds_epu16(input(n+0), input(n+5));
+            mix(h, &out);
+        }
+    }
+
+    #[inline(never)]
+    unsafe fn probe_mm256_adds_epu8(n: usize, h: &mut Digest) {
+        if feat("avx2") {
+            let out = _mm256_adds_epu8(input(n+0), input(n+5));
+            mix(h, &out);
+        }
+    }
+
+#[test]
+fn a0786_mm256_abs_epi16() {
+    let mut d = Digest::new();
+    unsafe { for n in 0..512 { probe_mm256_abs_epi16(core::hint::black_box(n), &mut d); } }
+    d.line("_mm256_abs_epi16", "none");
+}
+
+#[test]
+fn a0787_mm256_abs_epi32() {
+    let mut d = Digest::new();
+    unsafe { for n in 0..512 { probe_mm256_abs_epi32(core::hint::black_box(n), &mut d); } }
+    d.line("_mm256_abs_epi32", "none");
+}
+
+#[test]
+fn a0788_mm256_abs_epi64() {
+    let mut d = Digest::new();
+    unsafe { for n in 0..512 { probe_mm256_abs_epi64(core::hint::black_box(n), &mut d); } }
+    d.line("_mm256_abs_epi64", "none");
+}
+
+#[test]
+fn a0789_mm256_add_pd() {
+    let mut d = Digest::new();
+    unsafe { for n in 0..512 { probe_mm256_add_pd(core::hint::black_box(n), &mut d); } }
+    d.line("_mm256_add_pd", "none");
+}
+
+#[test]
+fn a0790_mm256_adds_epi16() {
+    let mut d = Digest::new();
+    unsafe { for n in 0..512 { probe_mm256_adds_epi16(core::hint::black_box(n), &mut d); } }
+    d.line("_mm256_adds_epi16", "none");
+}
+
+#[test]
+fn a0791_mm256_adds_epi8() {
+    let mut d = Digest::new();
+    unsafe { for n in 0..512 { probe_mm256_adds_epi8(core::hint::black_box(n), &mut d); } }
+    d.line("_mm256_adds_epi8", "none");
+}
+
+#[test]
+fn a0792_mm256_adds_epu16() {
+    let mut d = Digest::new();
+    unsafe { for n in 0..512 { probe_mm256_adds_epu16(core::hint::black_box(n), &mut d); } }
+    d.line("_mm256_adds_epu16", "none");
+}
+
+#[test]
+fn a0793_mm256_adds_epu8() {
+    let mut d = Digest::new();
+    unsafe { for n in 0..512 { probe_mm256_adds_epu8(core::hint::black_box(n), &mut d); } }
+    d.line("_mm256_adds_epu8", "none");
+}
+
 // Inside a function with their target features the safe x86 intrinsics (stdarch's) are called
 // without `unsafe`, as rustc's are; the implied features count (avx2 implies avx, ssse3, sse2).
 #[cfg(target_arch = "x86_64")]

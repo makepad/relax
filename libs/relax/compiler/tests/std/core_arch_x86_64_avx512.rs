@@ -48660,3 +48660,17 @@ fn a3245_mm_maskz_xor_pd() {
     d.line("_mm_maskz_xor_pd", "none");
 }
 
+
+    #[inline(never)]
+    unsafe fn probe_mm_maskz_xor_ps(n: usize, h: &mut Digest) {
+        if feat("avx512dq") && feat("avx512vl") {
+            let out = _mm_maskz_xor_ps(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3));
+            mix(h, &out);
+        }
+    }
+#[test]
+fn a3246_mm_maskz_xor_ps() {
+    let mut d = Digest::new();
+    unsafe { for n in 0..512 { probe_mm_maskz_xor_ps(core::hint::black_box(n), &mut d); } }
+    d.line("_mm_maskz_xor_ps", "none");
+}
