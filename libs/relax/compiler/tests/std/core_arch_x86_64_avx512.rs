@@ -25842,7 +25842,11 @@ fn a0280_mm512_zextsi256_si512() {
         }
     }
 
+    // rustc 1.98.1 can swap operands in out-of-line scalar maskz FMA intrinsics.
+    // Enabling AVX-512 here lets the native reference inline the documented operation;
+    // callers check the CPU feature before entering these functions.
     #[inline(never)]
+    #[target_feature(enable = "avx512f")]
     unsafe fn probe_mm_maskz_fmadd_sd(n: usize, h: &mut Digest) {
         if feat("avx512f") {
             let out = _mm_maskz_fmadd_sd(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3), float_input(n+4));
@@ -25851,6 +25855,7 @@ fn a0280_mm512_zextsi256_si512() {
     }
 
     #[inline(never)]
+    #[target_feature(enable = "avx512f")]
     unsafe fn probe_mm_maskz_fmadd_ss(n: usize, h: &mut Digest) {
         if feat("avx512f") {
             let out = _mm_maskz_fmadd_ss(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3), float_input(n+4));
@@ -25907,6 +25912,7 @@ fn a0280_mm512_zextsi256_si512() {
     }
 
     #[inline(never)]
+    #[target_feature(enable = "avx512f")]
     unsafe fn probe_mm_maskz_fmsub_sd(n: usize, h: &mut Digest) {
         if feat("avx512f") {
             let out = _mm_maskz_fmsub_sd(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3), float_input(n+4));
@@ -25915,6 +25921,7 @@ fn a0280_mm512_zextsi256_si512() {
     }
 
     #[inline(never)]
+    #[target_feature(enable = "avx512f")]
     unsafe fn probe_mm_maskz_fmsub_ss(n: usize, h: &mut Digest) {
         if feat("avx512f") {
             let out = _mm_maskz_fmsub_ss(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3), float_input(n+4));
@@ -25971,6 +25978,7 @@ fn a0280_mm512_zextsi256_si512() {
     }
 
     #[inline(never)]
+    #[target_feature(enable = "avx512f")]
     unsafe fn probe_mm_maskz_fnmadd_sd(n: usize, h: &mut Digest) {
         if feat("avx512f") {
             let out = _mm_maskz_fnmadd_sd(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3), float_input(n+4));
@@ -25979,6 +25987,7 @@ fn a0280_mm512_zextsi256_si512() {
     }
 
     #[inline(never)]
+    #[target_feature(enable = "avx512f")]
     unsafe fn probe_mm_maskz_fnmadd_ss(n: usize, h: &mut Digest) {
         if feat("avx512f") {
             let out = _mm_maskz_fnmadd_ss(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3), float_input(n+4));
@@ -46857,14 +46866,14 @@ fn a2987_mm_maskz_fmadd_round_ss() {
 #[test]
 fn a2988_mm_maskz_fmadd_sd() {
     let mut d = Digest::new();
-    unsafe { for n in 0..512 { probe_mm_maskz_fmadd_sd(core::hint::black_box(n), &mut d); } }
+    if feat("avx512f") { unsafe { for n in 0..512 { probe_mm_maskz_fmadd_sd(core::hint::black_box(n), &mut d); } } }
     eprintln!("_mm_maskz_fmadd_sd: rustc reference is affected by the known LLVM masked scalar-FMA operand-commutation miscompile (D75506/D75526); relax implements the documented a*b+c semantics");
 }
 
 #[test]
 fn a2989_mm_maskz_fmadd_ss() {
     let mut d = Digest::new();
-    unsafe { for n in 0..512 { probe_mm_maskz_fmadd_ss(core::hint::black_box(n), &mut d); } }
+    if feat("avx512f") { unsafe { for n in 0..512 { probe_mm_maskz_fmadd_ss(core::hint::black_box(n), &mut d); } } }
     eprintln!("_mm_maskz_fmadd_ss: rustc reference is affected by the known LLVM masked scalar-FMA operand-commutation miscompile (D75506/D75526); relax implements the documented a*b+c semantics");
 }
 
@@ -46913,14 +46922,14 @@ fn a2995_mm_maskz_fmsub_round_ss() {
 #[test]
 fn a2996_mm_maskz_fmsub_sd() {
     let mut d = Digest::new();
-    unsafe { for n in 0..512 { probe_mm_maskz_fmsub_sd(core::hint::black_box(n), &mut d); } }
+    if feat("avx512f") { unsafe { for n in 0..512 { probe_mm_maskz_fmsub_sd(core::hint::black_box(n), &mut d); } } }
     eprintln!("_mm_maskz_fmsub_sd: rustc reference is affected by the known LLVM masked scalar-FMA operand-commutation miscompile (D75506/D75526); relax implements the documented a*b+c semantics");
 }
 
 #[test]
 fn a2997_mm_maskz_fmsub_ss() {
     let mut d = Digest::new();
-    unsafe { for n in 0..512 { probe_mm_maskz_fmsub_ss(core::hint::black_box(n), &mut d); } }
+    if feat("avx512f") { unsafe { for n in 0..512 { probe_mm_maskz_fmsub_ss(core::hint::black_box(n), &mut d); } } }
     eprintln!("_mm_maskz_fmsub_ss: rustc reference is affected by the known LLVM masked scalar-FMA operand-commutation miscompile (D75506/D75526); relax implements the documented a*b+c semantics");
 }
 
@@ -46969,14 +46978,14 @@ fn a3003_mm_maskz_fnmadd_round_ss() {
 #[test]
 fn a3004_mm_maskz_fnmadd_sd() {
     let mut d = Digest::new();
-    unsafe { for n in 0..512 { probe_mm_maskz_fnmadd_sd(core::hint::black_box(n), &mut d); } }
+    if feat("avx512f") { unsafe { for n in 0..512 { probe_mm_maskz_fnmadd_sd(core::hint::black_box(n), &mut d); } } }
     eprintln!("_mm_maskz_fnmadd_sd: rustc reference is affected by the known LLVM masked scalar-FMA operand-commutation miscompile (D75506/D75526); relax implements the documented a*b+c semantics");
 }
 
 #[test]
 fn a3005_mm_maskz_fnmadd_ss() {
     let mut d = Digest::new();
-    unsafe { for n in 0..512 { probe_mm_maskz_fnmadd_ss(core::hint::black_box(n), &mut d); } }
+    if feat("avx512f") { unsafe { for n in 0..512 { probe_mm_maskz_fnmadd_ss(core::hint::black_box(n), &mut d); } } }
     eprintln!("_mm_maskz_fnmadd_ss: rustc reference is affected by the known LLVM masked scalar-FMA operand-commutation miscompile (D75506/D75526); relax implements the documented a*b+c semantics");
 }
 

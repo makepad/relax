@@ -13,7 +13,11 @@ pub use core::arch::x86_64;
 pub use crate::is_aarch64_feature_detected;
 pub use crate::is_x86_feature_detected;
 
+#[path = "arch/feature_bits.rs"]
+mod feature_bits;
+
 pub mod detect {
+    use super::feature_bits::{feature_bit, INIT};
     use core::sync::atomic::{AtomicU64, Ordering};
 
     /// Feature bits (one namespace for both architectures).
@@ -137,7 +141,6 @@ pub mod detect {
     /// The feature bits, low and high words; bit 127 = initialised (written last, so a reader
     /// that sees it sees the low word too).
     static CACHE: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
-    const INIT: u128 = 1 << 127;
 
     pub fn check(f: Feature) -> bool {
         let mut v = ((CACHE[1].load(Ordering::Acquire) as u128) << 64) | CACHE[0].load(Ordering::Relaxed) as u128;
@@ -146,15 +149,11 @@ pub mod detect {
             CACHE[0].store(v as u64, Ordering::Relaxed);
             CACHE[1].store((v >> 64) as u64, Ordering::Release);
         }
-        v & (1u128 << (f as u8)) != 0
+        v & bit(f, true) != 0
     }
 
     fn bit(f: Feature, on: bool) -> u128 {
-        if on {
-            1u128 << (f as u8)
-        } else {
-            0
-        }
+        feature_bit(f as u8, on)
     }
 
     #[cfg(all(target_vendor = "apple", target_arch = "aarch64"))]
@@ -315,10 +314,6 @@ pub mod detect {
             | bit(Feature::Sha512, avx512 && e.ebx & (1 << 16) != 0 && e1.eax & 1 != 0)
             | bit(Feature::Tbm, root.ebx == 0x68747541 && root.ecx == 0x444d4163 && root.edx == 0x69746e65 && ext & (1 << 21) != 0)
     }
-
-    // SHA512 and TBM are x86-64 leaf features; other targets report none.
-    #[cfg(not(target_arch = "x86_64"))]
-    fn detect_features_hi() -> u64 { 0 }
 
     #[cfg(all(any(target_os = "linux", target_os = "android"), target_arch = "aarch64"))]
     fn detect_features() -> u128 {

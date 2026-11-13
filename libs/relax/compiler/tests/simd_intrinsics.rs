@@ -4,99 +4,7 @@
 // lane extrema, saturation boundaries, shuffle sign bits, NaNs and signed zero.
 #![allow(unused_unsafe, non_snake_case)]
 
-// Feature probing goes through CPUID/XCR0 directly, not is_x86_feature_detected:
-// relax's std reports no AVX-512 while its asm! assembler encodes no EVEX, but the
-// emulated intrinsics here compute regardless of the reported feature bits, so on an
-// AVX-512 host the relax run and the rustc reference would take different branches.
-#[cfg(target_arch = "x86_64")]
-fn feat(name: &str) -> bool {
-    use core::arch::x86_64::{__cpuid, __cpuid_count, _xgetbv, CpuidResult};
-    unsafe {
-        let root = __cpuid(0);
-        if root.eax < 1 { return false; }
-        let p = __cpuid(1);
-        let zero = CpuidResult { eax: 0, ebx: 0, ecx: 0, edx: 0 };
-        let e = if root.eax >= 7 { __cpuid_count(7, 0) } else { zero };
-        let e1 = if root.eax >= 7 && e.eax >= 1 { __cpuid_count(7, 1) } else { zero };
-        let ext = if __cpuid(0x80000000).eax >= 0x80000001 { __cpuid(0x80000001).ecx } else { 0 };
-        let xcr0 = if p.ecx & (3 << 26) == (3 << 26) { _xgetbv(0) } else { 0 };
-        let avx = xcr0 & 6 == 6 && p.ecx & (1 << 28) != 0;
-        let avx512 = avx && xcr0 & 0xe6 == 0xe6 && e.ebx & (1 << 16) != 0;
-        let amd = (root.ebx == 0x68747541 && root.edx == 0x69746e65 && root.ecx == 0x444d4163)
-            || (root.ebx == 0x6f677948 && root.edx == 0x6e65476e && root.ecx == 0x656e6975);
-        match name {
-            "sse" => p.edx & (1 << 25) != 0,
-            "sse2" => p.edx & (1 << 26) != 0,
-            "sse3" => p.ecx & 1 != 0,
-            "ssse3" => p.ecx & (1 << 9) != 0,
-            "sse4.1" => p.ecx & (1 << 19) != 0,
-            "sse4.2" => p.ecx & (1 << 20) != 0,
-            "sse4a" => amd && ext & (1 << 6) != 0,
-            "popcnt" => p.ecx & (1 << 23) != 0,
-            "avx" => avx,
-            "avx2" => avx && e.ebx & (1 << 5) != 0,
-            "fma" => avx && p.ecx & (1 << 12) != 0,
-            "f16c" => avx && p.ecx & (1 << 29) != 0,
-            "bmi1" => e.ebx & (1 << 3) != 0,
-            "bmi2" => e.ebx & (1 << 8) != 0,
-            "lzcnt" => ext & (1 << 5) != 0,
-            "tbm" => amd && ext & (1 << 21) != 0,
-            "adx" => e.ebx & (1 << 19) != 0,
-            "sha" => e.ebx & (1 << 29) != 0,
-            "pclmulqdq" => p.ecx & (1 << 1) != 0,
-            "vpclmulqdq" => avx && e.ecx & (1 << 10) != 0,
-            "aes" => p.ecx & (1 << 25) != 0,
-            "vaes" => avx && e.ecx & (1 << 9) != 0,
-            "gfni" => e.ecx & (1 << 8) != 0,
-            "avx512f" => avx512,
-            "avx512bw" => avx512 && e.ebx & (1 << 30) != 0,
-            "avx512vl" => avx512 && e.ebx & (1 << 31) != 0,
-            "avx512dq" => avx512 && e.ebx & (1 << 17) != 0,
-            "avx512cd" => avx512 && e.ebx & (1 << 28) != 0,
-            "avx512vbmi" => avx512 && e.ecx & (1 << 1) != 0,
-            "avx512vbmi2" => avx512 && e.ecx & (1 << 6) != 0,
-            "avx512vnni" => avx512 && e.ecx & (1 << 11) != 0,
-            "avx512bitalg" => avx512 && e.ecx & (1 << 12) != 0,
-            "avx512vpopcntdq" => avx512 && e.ecx & (1 << 14) != 0,
-            "avx512ifma" => avx512 && e.ebx & (1 << 21) != 0,
-            "avx512fp16" => avx512 && e.edx & (1 << 23) != 0,
-            "avx512bf16" => avx512 && e1.eax & (1 << 5) != 0,
-            "avx512vp2intersect" => avx512 && e.edx & (1 << 8) != 0,
-            "avxvnni" => avx && e1.eax & (1 << 4) != 0,
-            "avxvnniint8" => avx && e1.edx & (1 << 4) != 0,
-            "avxvnniint16" => avx && e1.edx & (1 << 10) != 0,
-            "avxifma" => avx && e1.eax & (1 << 23) != 0,
-            "sha512" => avx512 && e1.eax & 1 != 0,
-            "sm3" => avx && e1.eax & (1 << 1) != 0,
-            "sm4" => avx && e1.eax & (1 << 2) != 0,
-            _ => false,
-        }
-    }
-}
-#[cfg(not(target_arch = "x86_64"))]
-fn feat(_name: &str) -> bool { false }
-
-fn kbits(n: usize) -> u64 {
-    (0x9e3779b97f4a7c15u64).wrapping_mul(n as u64 + 1)
-}
-
-static mut SIMDBUF: [u8; 2048] = [0xa5; 2048];
-
-// stream_load/stream_store need natural vector-size alignment, so both
-// helpers return addresses snapped to a 64-byte boundary.
-fn loadptr(n: usize) -> *const u8 {
-    unsafe {
-        let p = core::ptr::addr_of!(SIMDBUF) as *const u8;
-        p.add((64 - (p as usize & 63)) & 63).add((n % 8) * 64)
-    }
-}
-
-fn storeptr(n: usize) -> *mut u8 {
-    unsafe {
-        let p = core::ptr::addr_of_mut!(SIMDBUF) as *mut u8;
-        p.add(1024 + ((64 - (p as usize & 63)) & 63)).add((n % 8) * 64)
-    }
-}
+include!("std/arch/x86_simd_support.rs");
 
 fn mix<T>(h: &mut u64, v: &T) {
     let bytes = unsafe {
@@ -105,61 +13,6 @@ fn mix<T>(h: &mut u64, v: &T) {
     for &b in bytes {
         *h = (*h ^ b as u64).wrapping_mul(0x100000001b3);
     }
-}
-
-fn input<T: Copy>(n: usize) -> T {
-    let edges = [
-        0u64,
-        u64::MAX,
-        0x8080808080808080,
-        0x7f7f7f7f7f7f7f7f,
-        0x8000800080008000,
-        0x7fff7fff7fff7fff,
-        0x8000000080000000,
-        0x7fffffff7fffffff,
-        0x8000000000000000,
-        0x7fffffffffffffff,
-        0x00ff0100007f0080,
-        0xffff00010000ffff,
-        0x0000ffff00010000,
-        0x000102030e0f1011,
-        0x7f80ff1020304050,
-        0x0123456789abcdef,
-    ];
-    // Sized to the widest vector under test (__m512, 8 words).
-    let mut words = [0u64; 8];
-    for i in 0..core::mem::size_of::<T>() / 8 {
-        words[i] = edges[(n + i * (n / 16)) % 16];
-    }
-    unsafe { core::ptr::read_unaligned(words.as_ptr() as *const T) }
-}
-
-fn float_input<T: Copy>(n: usize) -> T {
-    // One quiet NaN payload, to avoid unspecified choices between two payloads
-    // in commutative arithmetic; min/max still verify NaN and signed-zero bits.
-    let bits = [
-        0u32, 0x80000000, 0x3f800000, 0xbf800000, 0x7f800000, 0xff800000, 0x7fc00000, 1,
-        0x7f7fffff, 0x00800000, 0x40800000, 0xc0800000,
-    ];
-    // Sized to the widest vector under test (__m512, 16 lanes).
-    let mut words = [0u32; 16];
-    for i in 0..core::mem::size_of::<T>() / 4 {
-        words[i] = bits[(n + i) % 12];
-    }
-    unsafe { core::ptr::read_unaligned(words.as_ptr() as *const T) }
-}
-
-// Exercise both NaN operands and signaling/quiet priority as well as signed zeros.
-fn minmax_input<T: Copy>(n: usize) -> T {
-    let bits = [
-        0u32, 0x80000000, 0x3f800000, 0xbf800000, 0x7f800000, 0xff800000, 0x7fc12345, 0xffc54321,
-        0x7f800001, 0xff800123, 1, 0x80000001, 0x7f7fffff, 0xff7fffff, 0x00800000, 0x80800000,
-    ];
-    let mut words = [0u32; 4];
-    for i in 0..4 {
-        words[i] = bits[(n + i) % 16];
-    }
-    unsafe { core::ptr::read_unaligned(words.as_ptr() as *const T) }
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -2970,20 +2823,20 @@ mod x86_64 {
     #[inline(never)]
     unsafe fn probe_mm_cmpestro (n: usize, h: &mut u64) {
         if feat("sse4.2") {
-            let out = _mm_cmpestro::<0>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<1>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<8>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<10>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<12>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<14>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<18>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<22>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<26>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<30>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<48>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<52>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<58>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestro::<66>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
+            let out = _mm_cmpestro::<0>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<1>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<8>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<10>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<12>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<14>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<18>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<22>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<26>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<30>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<48>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<52>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<58>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestro::<66>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
         }
     }
     #[inline(never)]
@@ -3008,115 +2861,115 @@ mod x86_64 {
     #[inline(never)]
     unsafe fn probe_mm_cmpestra (n: usize, h: &mut u64) {
         if feat("sse4.2") {
-            let out = _mm_cmpestra::<0>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<1>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<8>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<10>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<12>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<14>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<18>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<22>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<26>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<30>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<48>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<52>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<58>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestra::<66>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
+            let out = _mm_cmpestra::<0>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<1>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<8>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<10>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<12>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<14>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<18>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<22>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<26>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<30>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<48>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<52>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<58>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestra::<66>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
         }
     }
     #[inline(never)]
     unsafe fn probe_mm_cmpestrc (n: usize, h: &mut u64) {
         if feat("sse4.2") {
-            let out = _mm_cmpestrc::<0>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<1>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<8>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<10>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<12>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<14>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<18>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<22>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<26>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<30>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<48>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<52>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<58>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrc::<66>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
+            let out = _mm_cmpestrc::<0>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<1>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<8>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<10>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<12>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<14>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<18>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<22>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<26>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<30>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<48>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<52>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<58>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrc::<66>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
         }
     }
     #[inline(never)]
     unsafe fn probe_mm_cmpestrs (n: usize, h: &mut u64) {
         if feat("sse4.2") {
-            let out = _mm_cmpestrs::<0>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<1>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<8>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<10>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<12>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<14>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<18>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<22>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<26>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<30>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<48>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<52>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<58>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrs::<66>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
+            let out = _mm_cmpestrs::<0>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<1>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<8>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<10>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<12>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<14>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<18>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<22>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<26>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<30>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<48>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<52>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<58>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrs::<66>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
         }
     }
     #[inline(never)]
     unsafe fn probe_mm_cmpestrz (n: usize, h: &mut u64) {
         if feat("sse4.2") {
-            let out = _mm_cmpestrz::<0>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<1>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<8>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<10>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<12>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<14>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<18>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<22>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<26>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<30>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<48>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<52>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<58>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrz::<66>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
+            let out = _mm_cmpestrz::<0>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<1>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<8>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<10>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<12>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<14>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<18>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<22>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<26>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<30>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<48>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<52>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<58>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrz::<66>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
         }
     }
     #[inline(never)]
     unsafe fn probe_mm_cmpestri (n: usize, h: &mut u64) {
         if feat("sse4.2") {
-            let out = _mm_cmpestri::<0>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<1>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<8>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<10>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<12>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<14>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<18>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<22>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<26>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<30>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<48>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<52>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<58>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestri::<66>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
+            let out = _mm_cmpestri::<0>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<1>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<8>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<10>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<12>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<14>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<18>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<22>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<26>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<30>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<48>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<52>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<58>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestri::<66>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
         }
     }
     #[inline(never)]
     unsafe fn probe_mm_cmpestrm (n: usize, h: &mut u64) {
         if feat("sse4.2") {
-            let out = _mm_cmpestrm::<0>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<1>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<8>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<10>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<12>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<14>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<18>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<22>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<26>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<30>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<48>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<52>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<58>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
-            let out = _mm_cmpestrm::<66>(input::<__m128i>(n+1), (input::<u32>(n+2) % 20) as i32, input::<__m128i>(n+3), (input::<u32>(n+4) % 20) as i32); mix(h, &out);
+            let out = _mm_cmpestrm::<0>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<1>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<8>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<10>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<12>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<14>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<18>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<22>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<26>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<30>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<48>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<52>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<58>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
+            let out = _mm_cmpestrm::<66>(input::<__m128i>(n+1), string_length(n+2), input::<__m128i>(n+3), string_length(n+4)); mix(h, &out);
         }
     }
     #[inline(never)]
@@ -3732,7 +3585,7 @@ mod x86_64 {
         if report { println!("SIMD _bittestandcomplement64 {:016x}", h); }
         let mut h = 0xcbf29ce484222325u64;
         for n in 0..512 { unsafe { probe_rdtsc(core::hint::black_box(n), &mut h); } }
-        if report { println!("SIMD _rdtsc {:016x}", h); }
+        if report { eprintln!("_rdtsc: nondeterministic; output is timing-dependent"); }
         let mut h = 0xcbf29ce484222325u64;
         for n in 0..512 { unsafe { probe_mm_comineq_ss(core::hint::black_box(n), &mut h); } }
         if report { println!("SIMD _mm_comineq_ss {:016x}", h); }
@@ -21331,7 +21184,11 @@ mod x86_64 {
             mix(h, &out);
         }
     }
+    // rustc 1.98.1 can swap operands in out-of-line scalar maskz FMA intrinsics.
+    // Enabling AVX-512 here lets the native reference inline the documented operation;
+    // callers check the CPU feature before entering these functions.
     #[inline(never)]
+    #[target_feature(enable = "avx512f")]
     unsafe fn probe_mm_maskz_fmadd_sd(n: usize, h: &mut u64) {
         if feat("avx512f") {
             let out = _mm_maskz_fmadd_sd(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3), float_input(n+4));
@@ -21339,6 +21196,7 @@ mod x86_64 {
         }
     }
     #[inline(never)]
+    #[target_feature(enable = "avx512f")]
     unsafe fn probe_mm_maskz_fmadd_ss(n: usize, h: &mut u64) {
         if feat("avx512f") {
             let out = _mm_maskz_fmadd_ss(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3), float_input(n+4));
@@ -21388,6 +21246,7 @@ mod x86_64 {
         }
     }
     #[inline(never)]
+    #[target_feature(enable = "avx512f")]
     unsafe fn probe_mm_maskz_fmsub_sd(n: usize, h: &mut u64) {
         if feat("avx512f") {
             let out = _mm_maskz_fmsub_sd(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3), float_input(n+4));
@@ -21395,6 +21254,7 @@ mod x86_64 {
         }
     }
     #[inline(never)]
+    #[target_feature(enable = "avx512f")]
     unsafe fn probe_mm_maskz_fmsub_ss(n: usize, h: &mut u64) {
         if feat("avx512f") {
             let out = _mm_maskz_fmsub_ss(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3), float_input(n+4));
@@ -21444,6 +21304,7 @@ mod x86_64 {
         }
     }
     #[inline(never)]
+    #[target_feature(enable = "avx512f")]
     unsafe fn probe_mm_maskz_fnmadd_sd(n: usize, h: &mut u64) {
         if feat("avx512f") {
             let out = _mm_maskz_fnmadd_sd(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3), float_input(n+4));
@@ -21451,6 +21312,7 @@ mod x86_64 {
         }
     }
     #[inline(never)]
+    #[target_feature(enable = "avx512f")]
     unsafe fn probe_mm_maskz_fnmadd_ss(n: usize, h: &mut u64) {
         if feat("avx512f") {
             let out = _mm_maskz_fnmadd_ss(kbits(n+1) as __mmask8, float_input(n+2), float_input(n+3), float_input(n+4));
@@ -42401,10 +42263,10 @@ mod x86_64 {
         for n in 0..512 { unsafe { probe_mm_maskz_fmadd_round_ss(core::hint::black_box(n), &mut h); } }
         if report { println!("SIMD _mm_maskz_fmadd_round_ss {:016x}", h); }
         let mut h = 0xcbf29ce484222325u64;
-        for n in 0..512 { unsafe { probe_mm_maskz_fmadd_sd(core::hint::black_box(n), &mut h); } }
+        if feat("avx512f") { for n in 0..512 { unsafe { probe_mm_maskz_fmadd_sd(core::hint::black_box(n), &mut h); } } }
         if report { println!("SIMD _mm_maskz_fmadd_sd {:016x}", h); }
         let mut h = 0xcbf29ce484222325u64;
-        for n in 0..512 { unsafe { probe_mm_maskz_fmadd_ss(core::hint::black_box(n), &mut h); } }
+        if feat("avx512f") { for n in 0..512 { unsafe { probe_mm_maskz_fmadd_ss(core::hint::black_box(n), &mut h); } } }
         if report { println!("SIMD _mm_maskz_fmadd_ss {:016x}", h); }
         let mut h = 0xcbf29ce484222325u64;
         for n in 0..512 { unsafe { probe_mm_maskz_fmaddsub_pd(core::hint::black_box(n), &mut h); } }
@@ -42425,10 +42287,10 @@ mod x86_64 {
         for n in 0..512 { unsafe { probe_mm_maskz_fmsub_round_ss(core::hint::black_box(n), &mut h); } }
         if report { println!("SIMD _mm_maskz_fmsub_round_ss {:016x}", h); }
         let mut h = 0xcbf29ce484222325u64;
-        for n in 0..512 { unsafe { probe_mm_maskz_fmsub_sd(core::hint::black_box(n), &mut h); } }
+        if feat("avx512f") { for n in 0..512 { unsafe { probe_mm_maskz_fmsub_sd(core::hint::black_box(n), &mut h); } } }
         if report { println!("SIMD _mm_maskz_fmsub_sd {:016x}", h); }
         let mut h = 0xcbf29ce484222325u64;
-        for n in 0..512 { unsafe { probe_mm_maskz_fmsub_ss(core::hint::black_box(n), &mut h); } }
+        if feat("avx512f") { for n in 0..512 { unsafe { probe_mm_maskz_fmsub_ss(core::hint::black_box(n), &mut h); } } }
         if report { println!("SIMD _mm_maskz_fmsub_ss {:016x}", h); }
         let mut h = 0xcbf29ce484222325u64;
         for n in 0..512 { unsafe { probe_mm_maskz_fmsubadd_pd(core::hint::black_box(n), &mut h); } }
@@ -42449,10 +42311,10 @@ mod x86_64 {
         for n in 0..512 { unsafe { probe_mm_maskz_fnmadd_round_ss(core::hint::black_box(n), &mut h); } }
         if report { println!("SIMD _mm_maskz_fnmadd_round_ss {:016x}", h); }
         let mut h = 0xcbf29ce484222325u64;
-        for n in 0..512 { unsafe { probe_mm_maskz_fnmadd_sd(core::hint::black_box(n), &mut h); } }
+        if feat("avx512f") { for n in 0..512 { unsafe { probe_mm_maskz_fnmadd_sd(core::hint::black_box(n), &mut h); } } }
         if report { println!("SIMD _mm_maskz_fnmadd_sd {:016x}", h); }
         let mut h = 0xcbf29ce484222325u64;
-        for n in 0..512 { unsafe { probe_mm_maskz_fnmadd_ss(core::hint::black_box(n), &mut h); } }
+        if feat("avx512f") { for n in 0..512 { unsafe { probe_mm_maskz_fnmadd_ss(core::hint::black_box(n), &mut h); } } }
         if report { println!("SIMD _mm_maskz_fnmadd_ss {:016x}", h); }
         let mut h = 0xcbf29ce484222325u64;
         for n in 0..512 { unsafe { probe_mm_maskz_fnmsub_pd(core::hint::black_box(n), &mut h); } }
