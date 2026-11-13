@@ -132,7 +132,7 @@ c_source.write_text(c_text + '\n__attribute__((constructor)) static void cn_init
 early = run("constructor", command, success=False)
 assert early.returncode == 1, f"constructor callback exit status: {early.returncode}"
 assert not early.stdout, "program started after a constructor called into it"
-for expected in ["cannot load the --allow-c native library", "`cn_rust_square`", "a C constructor"]:
+for expected in ["the --allow-c native library's C code calls", "`cn_rust_square`", "a C constructor"]:
     assert expected in early.stderr, f"missing constructor diagnostic {expected!r}: {early.stderr}"
 c_source.write_text(c_text)
 print("PASS constructor: a C constructor calling into Rust reports the symbol; exit 1; no program output")
