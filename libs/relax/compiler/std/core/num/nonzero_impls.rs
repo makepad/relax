@@ -21,13 +21,13 @@ impl NonZero<u8> {
     pub const fn saturating_mul(self, other: NonZero<u8>) -> NonZero<u8> { unsafe { NonZero::new_unchecked(self.get().saturating_mul(other.get())) } }
     pub const fn checked_pow(self, other: u32) -> Option<NonZero<u8>> { match self.get().checked_pow(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
     pub const fn saturating_pow(self, other: u32) -> NonZero<u8> { unsafe { NonZero::new_unchecked(self.get().saturating_pow(other)) } }
-    pub fn checked_add(self, other: u8) -> Option<NonZero<u8>> { match self.get().checked_add(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
-    pub fn saturating_add(self, other: u8) -> NonZero<u8> { unsafe { NonZero::new_unchecked(self.get().saturating_add(other)) } }
-    pub fn checked_next_power_of_two(self) -> Option<NonZero<u8>> { match self.get().checked_next_power_of_two() { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
+    pub const fn checked_add(self, other: u8) -> Option<NonZero<u8>> { match self.get().checked_add(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
+    pub const fn saturating_add(self, other: u8) -> NonZero<u8> { unsafe { NonZero::new_unchecked(self.get().saturating_add(other)) } }
+    pub const fn checked_next_power_of_two(self) -> Option<NonZero<u8>> { match self.get().checked_next_power_of_two() { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
     pub const fn ilog2(self) -> u32 { u8::BITS - 1 - self.get().leading_zeros() }
-    pub fn ilog10(self) -> u32 { self.get().ilog10() }
+    pub const fn ilog10(self) -> u32 { self.get().ilog10() }
     pub const fn is_power_of_two(self) -> bool { self.get().is_power_of_two() }
-    pub fn isqrt(self) -> NonZero<u8> { unsafe { NonZero::new_unchecked(self.get().isqrt()) } }
+    pub const fn isqrt(self) -> NonZero<u8> { unsafe { NonZero::new_unchecked(self.get().isqrt()) } }
 }
 impl From<NonZero<u8>> for u8 { fn from(n: NonZero<u8>) -> u8 { n.get() } }
 impl BitOr for NonZero<u8> { type Output = NonZero<u8>; fn bitor(self, rhs: NonZero<u8>) -> NonZero<u8> { unsafe { NonZero::new_unchecked(self.get() | rhs.get()) } } }
@@ -51,13 +51,13 @@ impl NonZero<u16> {
     pub const fn saturating_mul(self, other: NonZero<u16>) -> NonZero<u16> { unsafe { NonZero::new_unchecked(self.get().saturating_mul(other.get())) } }
     pub const fn checked_pow(self, other: u32) -> Option<NonZero<u16>> { match self.get().checked_pow(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
     pub const fn saturating_pow(self, other: u32) -> NonZero<u16> { unsafe { NonZero::new_unchecked(self.get().saturating_pow(other)) } }
-    pub fn checked_add(self, other: u16) -> Option<NonZero<u16>> { match self.get().checked_add(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
-    pub fn saturating_add(self, other: u16) -> NonZero<u16> { unsafe { NonZero::new_unchecked(self.get().saturating_add(other)) } }
-    pub fn checked_next_power_of_two(self) -> Option<NonZero<u16>> { match self.get().checked_next_power_of_two() { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
+    pub const fn checked_add(self, other: u16) -> Option<NonZero<u16>> { match self.get().checked_add(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
+    pub const fn saturating_add(self, other: u16) -> NonZero<u16> { unsafe { NonZero::new_unchecked(self.get().saturating_add(other)) } }
+    pub const fn checked_next_power_of_two(self) -> Option<NonZero<u16>> { match self.get().checked_next_power_of_two() { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
     pub const fn ilog2(self) -> u32 { u16::BITS - 1 - self.get().leading_zeros() }
-    pub fn ilog10(self) -> u32 { self.get().ilog10() }
+    pub const fn ilog10(self) -> u32 { self.get().ilog10() }
     pub const fn is_power_of_two(self) -> bool { self.get().is_power_of_two() }
-    pub fn isqrt(self) -> NonZero<u16> { unsafe { NonZero::new_unchecked(self.get().isqrt()) } }
+    pub const fn isqrt(self) -> NonZero<u16> { unsafe { NonZero::new_unchecked(self.get().isqrt()) } }
 }
 impl From<NonZero<u16>> for u16 { fn from(n: NonZero<u16>) -> u16 { n.get() } }
 impl BitOr for NonZero<u16> { type Output = NonZero<u16>; fn bitor(self, rhs: NonZero<u16>) -> NonZero<u16> { unsafe { NonZero::new_unchecked(self.get() | rhs.get()) } } }
@@ -81,13 +81,13 @@ impl NonZero<u32> {
     pub const fn saturating_mul(self, other: NonZero<u32>) -> NonZero<u32> { unsafe { NonZero::new_unchecked(self.get().saturating_mul(other.get())) } }
     pub const fn checked_pow(self, other: u32) -> Option<NonZero<u32>> { match self.get().checked_pow(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
     pub const fn saturating_pow(self, other: u32) -> NonZero<u32> { unsafe { NonZero::new_unchecked(self.get().saturating_pow(other)) } }
-    pub fn checked_add(self, other: u32) -> Option<NonZero<u32>> { match self.get().checked_add(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
-    pub fn saturating_add(self, other: u32) -> NonZero<u32> { unsafe { NonZero::new_unchecked(self.get().saturating_add(other)) } }
-    pub fn checked_next_power_of_two(self) -> Option<NonZero<u32>> { match self.get().checked_next_power_of_two() { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
+    pub const fn checked_add(self, other: u32) -> Option<NonZero<u32>> { match self.get().checked_add(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
+    pub const fn saturating_add(self, other: u32) -> NonZero<u32> { unsafe { NonZero::new_unchecked(self.get().saturating_add(other)) } }
+    pub const fn checked_next_power_of_two(self) -> Option<NonZero<u32>> { match self.get().checked_next_power_of_two() { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
     pub const fn ilog2(self) -> u32 { u32::BITS - 1 - self.get().leading_zeros() }
-    pub fn ilog10(self) -> u32 { self.get().ilog10() }
+    pub const fn ilog10(self) -> u32 { self.get().ilog10() }
     pub const fn is_power_of_two(self) -> bool { self.get().is_power_of_two() }
-    pub fn isqrt(self) -> NonZero<u32> { unsafe { NonZero::new_unchecked(self.get().isqrt()) } }
+    pub const fn isqrt(self) -> NonZero<u32> { unsafe { NonZero::new_unchecked(self.get().isqrt()) } }
 }
 impl From<NonZero<u32>> for u32 { fn from(n: NonZero<u32>) -> u32 { n.get() } }
 impl BitOr for NonZero<u32> { type Output = NonZero<u32>; fn bitor(self, rhs: NonZero<u32>) -> NonZero<u32> { unsafe { NonZero::new_unchecked(self.get() | rhs.get()) } } }
@@ -111,13 +111,13 @@ impl NonZero<u64> {
     pub const fn saturating_mul(self, other: NonZero<u64>) -> NonZero<u64> { unsafe { NonZero::new_unchecked(self.get().saturating_mul(other.get())) } }
     pub const fn checked_pow(self, other: u32) -> Option<NonZero<u64>> { match self.get().checked_pow(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
     pub const fn saturating_pow(self, other: u32) -> NonZero<u64> { unsafe { NonZero::new_unchecked(self.get().saturating_pow(other)) } }
-    pub fn checked_add(self, other: u64) -> Option<NonZero<u64>> { match self.get().checked_add(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
-    pub fn saturating_add(self, other: u64) -> NonZero<u64> { unsafe { NonZero::new_unchecked(self.get().saturating_add(other)) } }
-    pub fn checked_next_power_of_two(self) -> Option<NonZero<u64>> { match self.get().checked_next_power_of_two() { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
+    pub const fn checked_add(self, other: u64) -> Option<NonZero<u64>> { match self.get().checked_add(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
+    pub const fn saturating_add(self, other: u64) -> NonZero<u64> { unsafe { NonZero::new_unchecked(self.get().saturating_add(other)) } }
+    pub const fn checked_next_power_of_two(self) -> Option<NonZero<u64>> { match self.get().checked_next_power_of_two() { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
     pub const fn ilog2(self) -> u32 { u64::BITS - 1 - self.get().leading_zeros() }
-    pub fn ilog10(self) -> u32 { self.get().ilog10() }
+    pub const fn ilog10(self) -> u32 { self.get().ilog10() }
     pub const fn is_power_of_two(self) -> bool { self.get().is_power_of_two() }
-    pub fn isqrt(self) -> NonZero<u64> { unsafe { NonZero::new_unchecked(self.get().isqrt()) } }
+    pub const fn isqrt(self) -> NonZero<u64> { unsafe { NonZero::new_unchecked(self.get().isqrt()) } }
 }
 impl From<NonZero<u64>> for u64 { fn from(n: NonZero<u64>) -> u64 { n.get() } }
 impl BitOr for NonZero<u64> { type Output = NonZero<u64>; fn bitor(self, rhs: NonZero<u64>) -> NonZero<u64> { unsafe { NonZero::new_unchecked(self.get() | rhs.get()) } } }
@@ -141,13 +141,13 @@ impl NonZero<u128> {
     pub const fn saturating_mul(self, other: NonZero<u128>) -> NonZero<u128> { unsafe { NonZero::new_unchecked(self.get().saturating_mul(other.get())) } }
     pub const fn checked_pow(self, other: u32) -> Option<NonZero<u128>> { match self.get().checked_pow(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
     pub const fn saturating_pow(self, other: u32) -> NonZero<u128> { unsafe { NonZero::new_unchecked(self.get().saturating_pow(other)) } }
-    pub fn checked_add(self, other: u128) -> Option<NonZero<u128>> { match self.get().checked_add(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
-    pub fn saturating_add(self, other: u128) -> NonZero<u128> { unsafe { NonZero::new_unchecked(self.get().saturating_add(other)) } }
-    pub fn checked_next_power_of_two(self) -> Option<NonZero<u128>> { match self.get().checked_next_power_of_two() { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
+    pub const fn checked_add(self, other: u128) -> Option<NonZero<u128>> { match self.get().checked_add(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
+    pub const fn saturating_add(self, other: u128) -> NonZero<u128> { unsafe { NonZero::new_unchecked(self.get().saturating_add(other)) } }
+    pub const fn checked_next_power_of_two(self) -> Option<NonZero<u128>> { match self.get().checked_next_power_of_two() { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
     pub const fn ilog2(self) -> u32 { u128::BITS - 1 - self.get().leading_zeros() }
-    pub fn ilog10(self) -> u32 { self.get().ilog10() }
+    pub const fn ilog10(self) -> u32 { self.get().ilog10() }
     pub const fn is_power_of_two(self) -> bool { self.get().is_power_of_two() }
-    pub fn isqrt(self) -> NonZero<u128> { unsafe { NonZero::new_unchecked(self.get().isqrt()) } }
+    pub const fn isqrt(self) -> NonZero<u128> { unsafe { NonZero::new_unchecked(self.get().isqrt()) } }
 }
 impl From<NonZero<u128>> for u128 { fn from(n: NonZero<u128>) -> u128 { n.get() } }
 impl BitOr for NonZero<u128> { type Output = NonZero<u128>; fn bitor(self, rhs: NonZero<u128>) -> NonZero<u128> { unsafe { NonZero::new_unchecked(self.get() | rhs.get()) } } }
@@ -171,13 +171,13 @@ impl NonZero<usize> {
     pub const fn saturating_mul(self, other: NonZero<usize>) -> NonZero<usize> { unsafe { NonZero::new_unchecked(self.get().saturating_mul(other.get())) } }
     pub const fn checked_pow(self, other: u32) -> Option<NonZero<usize>> { match self.get().checked_pow(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
     pub const fn saturating_pow(self, other: u32) -> NonZero<usize> { unsafe { NonZero::new_unchecked(self.get().saturating_pow(other)) } }
-    pub fn checked_add(self, other: usize) -> Option<NonZero<usize>> { match self.get().checked_add(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
-    pub fn saturating_add(self, other: usize) -> NonZero<usize> { unsafe { NonZero::new_unchecked(self.get().saturating_add(other)) } }
-    pub fn checked_next_power_of_two(self) -> Option<NonZero<usize>> { match self.get().checked_next_power_of_two() { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
+    pub const fn checked_add(self, other: usize) -> Option<NonZero<usize>> { match self.get().checked_add(other) { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
+    pub const fn saturating_add(self, other: usize) -> NonZero<usize> { unsafe { NonZero::new_unchecked(self.get().saturating_add(other)) } }
+    pub const fn checked_next_power_of_two(self) -> Option<NonZero<usize>> { match self.get().checked_next_power_of_two() { Some(v) => Some(unsafe { NonZero::new_unchecked(v) }), None => None } }
     pub const fn ilog2(self) -> u32 { usize::BITS - 1 - self.get().leading_zeros() }
-    pub fn ilog10(self) -> u32 { self.get().ilog10() }
+    pub const fn ilog10(self) -> u32 { self.get().ilog10() }
     pub const fn is_power_of_two(self) -> bool { self.get().is_power_of_two() }
-    pub fn isqrt(self) -> NonZero<usize> { unsafe { NonZero::new_unchecked(self.get().isqrt()) } }
+    pub const fn isqrt(self) -> NonZero<usize> { unsafe { NonZero::new_unchecked(self.get().isqrt()) } }
 }
 impl From<NonZero<usize>> for usize { fn from(n: NonZero<usize>) -> usize { n.get() } }
 impl BitOr for NonZero<usize> { type Output = NonZero<usize>; fn bitor(self, rhs: NonZero<usize>) -> NonZero<usize> { unsafe { NonZero::new_unchecked(self.get() | rhs.get()) } } }

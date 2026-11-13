@@ -172,13 +172,13 @@ fn gen_nonzero(o: &mut String, t: &Int) {
     let _ = writeln!(o, "    pub const fn checked_pow(self, other: u32) -> Option<NonZero<{n}>> {{ match self.get().checked_pow(other) {{ Some(v) => Some(unsafe {{ NonZero::new_unchecked(v) }}), None => None }} }}");
     let _ = writeln!(o, "    pub const fn saturating_pow(self, other: u32) -> NonZero<{n}> {{ unsafe {{ NonZero::new_unchecked(self.get().saturating_pow(other)) }} }}");
     if !t.signed {
-        let _ = writeln!(o, "    pub fn checked_add(self, other: {n}) -> Option<NonZero<{n}>> {{ match self.get().checked_add(other) {{ Some(v) => Some(unsafe {{ NonZero::new_unchecked(v) }}), None => None }} }}");
-        let _ = writeln!(o, "    pub fn saturating_add(self, other: {n}) -> NonZero<{n}> {{ unsafe {{ NonZero::new_unchecked(self.get().saturating_add(other)) }} }}");
-        let _ = writeln!(o, "    pub fn checked_next_power_of_two(self) -> Option<NonZero<{n}>> {{ match self.get().checked_next_power_of_two() {{ Some(v) => Some(unsafe {{ NonZero::new_unchecked(v) }}), None => None }} }}");
+        let _ = writeln!(o, "    pub const fn checked_add(self, other: {n}) -> Option<NonZero<{n}>> {{ match self.get().checked_add(other) {{ Some(v) => Some(unsafe {{ NonZero::new_unchecked(v) }}), None => None }} }}");
+        let _ = writeln!(o, "    pub const fn saturating_add(self, other: {n}) -> NonZero<{n}> {{ unsafe {{ NonZero::new_unchecked(self.get().saturating_add(other)) }} }}");
+        let _ = writeln!(o, "    pub const fn checked_next_power_of_two(self) -> Option<NonZero<{n}>> {{ match self.get().checked_next_power_of_two() {{ Some(v) => Some(unsafe {{ NonZero::new_unchecked(v) }}), None => None }} }}");
         let _ = writeln!(o, "    pub const fn ilog2(self) -> u32 {{ {n}::BITS - 1 - self.get().leading_zeros() }}");
-        let _ = writeln!(o, "    pub fn ilog10(self) -> u32 {{ self.get().ilog10() }}");
+        let _ = writeln!(o, "    pub const fn ilog10(self) -> u32 {{ self.get().ilog10() }}");
         let _ = writeln!(o, "    pub const fn is_power_of_two(self) -> bool {{ self.get().is_power_of_two() }}");
-        let _ = writeln!(o, "    pub fn isqrt(self) -> NonZero<{n}> {{ unsafe {{ NonZero::new_unchecked(self.get().isqrt()) }} }}");
+        let _ = writeln!(o, "    pub const fn isqrt(self) -> NonZero<{n}> {{ unsafe {{ NonZero::new_unchecked(self.get().isqrt()) }} }}");
     } else {
         let _ = writeln!(o, "    pub fn abs(self) -> NonZero<{n}> {{ unsafe {{ NonZero::new_unchecked(self.get().abs()) }} }}");
         let _ = writeln!(o, "    pub fn checked_abs(self) -> Option<NonZero<{n}>> {{ match self.get().checked_abs() {{ Some(v) => Some(unsafe {{ NonZero::new_unchecked(v) }}), None => None }} }}");
