@@ -3143,13 +3143,13 @@ pub(crate) fn link_attr_libs(prog: &crate::program::Program, first_file: usize) 
 /// value namespace, imports and globs included -- `pub use app::*;` brings it in), then entry.rs:
 /// it must be a fn.
 /// What to call to run `main` (whose lazy stub is `entry`): (target, argument) for `call_jit`.
-/// `fn main() -> T` (T != ()): rustc's lang_start runs `main().report()` (Termination) and exits
-/// with its code; std::process::__relax_lang_start::<T>(main) does the same.
+/// rustc's lang_start runs `main().report()` (Termination) and cleans up stdio; the
+/// std::process::__relax_lang_start::<T>(main) wrapper does the same, including for `()`.
 /// (a `#[no_main]` crate's `extern "C" fn main(argc, argv) -> c_int` is called as before)
 pub(crate) fn main_call(u: &mut Unit, main_def: DefId, entry: u64) -> Result<(u64, u64), String> {
     let main_ret = u.tcx.fn_sig(&u.prog, main_def).filter(|s| !s.header.abi.is_c_like()).map(|s| s.ret);
     match main_ret {
-        Some(ret) if ret != u.tcx.tys.unit => {
+        Some(ret) => {
             let start = (0..u.prog.defs.len() as u32)
                 .map(DefId)
                 // std::process re-exports its OS half (`pub use imp::*`: process_unix.rs /
@@ -3163,6 +3163,7 @@ pub(crate) fn main_call(u: &mut Unit, main_def: DefId, entry: u64) -> Result<(u6
                     let sid = u.fn_id(FnKey::Inst(sd, vec![ret]));
                     Ok((u.entry(sid), entry))
                 }
+                None if ret == u.tcx.tys.unit => Ok((entry, 0)),
                 None => Err("`fn main` returns a value but std has no process::__relax_lang_start".to_string()),
             }
         }

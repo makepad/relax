@@ -336,14 +336,15 @@ impl<T: Termination, E: fmt::Debug> Termination for Result<T, E> {
     }
 }
 
-/// `makepad run` calls this instead of `main` when main returns a value (rustc rt.rs lang_start:
-/// `main().report().to_i32()` becomes the process exit status).
+/// `makepad run` calls this instead of Rust `main` (rustc rt.rs lang_start:
+/// `main().report().to_i32()` becomes the process exit status, then stdio is flushed).
 #[doc(hidden)]
 pub fn __relax_lang_start<T: Termination>(main: fn() -> T) {
     let code = main().report().to_i32();
     if code != 0 {
         exit(code)
     }
+    crate::io::cleanup();
 }
 
 impl From<u8> for ExitCode {
