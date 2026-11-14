@@ -779,7 +779,7 @@ mod unix {
                 Ok(kept) => out_all(st.out, format!("relax: session log kept at {} (an internal compiler error)\n", kept.display()).as_bytes()),
                 Err(e) => out_all(st.out, format!("relax: session log kept at {} (an internal compiler error; not copied to the captures: {e})\n", st.path.display()).as_bytes()),
             }
-        } else {
+        } else if !crate::run::silent() {
             out_all(st.out, format!("relax: session log kept at {}\n", st.path.display()).as_bytes());
         }
         *g = None;
