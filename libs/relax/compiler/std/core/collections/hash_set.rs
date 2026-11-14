@@ -1,6 +1,7 @@
 //! HashSet: a HashMap with `()` values.
 
 use super::hash_map::{self, HashMap};
+use super::raw_table::RawExtractIf;
 use crate::borrow::Borrow;
 use crate::fmt;
 use crate::hash::{BuildHasher, Hash, RandomState};
@@ -57,6 +58,9 @@ impl<T, S> HashSet<T, S> {
 impl<T: Eq + Hash, S: BuildHasher> HashSet<T, S> {
     pub fn reserve(&mut self, additional: usize) {
         self.map.reserve(additional)
+    }
+    pub fn try_reserve(&mut self, additional: usize) -> Result<(), super::TryReserveError> {
+        self.map.try_reserve(additional)
     }
     pub fn shrink_to_fit(&mut self) {
         self.map.shrink_to_fit()
@@ -167,6 +171,9 @@ impl<T: Eq + Hash, S: BuildHasher> HashSet<T, S> {
             Some((k, _)) => Some(k),
             None => None,
         }
+    }
+    pub fn extract_if<F: FnMut(&T) -> bool>(&mut self, pred: F) -> ExtractIf<'_, T, F> {
+        ExtractIf { inner: RawExtractIf::new(self.map.table_mut()), pred }
     }
 }
 
@@ -347,6 +354,28 @@ impl<'a, K> ExactSizeIterator for Drain<'a, K> {}
 impl<'a, K: fmt::Debug> fmt::Debug for Drain<'a, K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list().entries(self.inner.iter().map(|(k, _)| k)).finish()
+    }
+}
+
+pub struct ExtractIf<'a, T: 'a, F: 'a> {
+    inner: RawExtractIf<'a, (T, ())>,
+    pred: F,
+}
+
+impl<'a, T, F: FnMut(&T) -> bool> Iterator for ExtractIf<'a, T, F> {
+    type Item = T;
+    fn next(&mut self) -> Option<T> {
+        let pred = &mut self.pred;
+        match self.inner.next_if(|kv| pred(&kv.0)) {
+            Some((k, _)) => Some(k),
+            None => None,
+        }
+    }
+}
+
+impl<T: fmt::Debug, F> fmt::Debug for ExtractIf<'_, T, F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExtractIf").finish_non_exhaustive()
     }
 }
 

@@ -1,7 +1,7 @@
 //! HashMap over the open-addressing RawTable. Same API and semantics as real std's, except
 //! iteration order (per process and map as in real std, but a different hash: see hash/fast.rs).
 
-use super::raw_table::{next_full, RawTable};
+use super::raw_table::{next_full, RawExtractIf, RawTable};
 use crate::borrow::Borrow;
 use crate::fmt;
 use crate::hash::{BuildHasher, Hash};
@@ -167,6 +167,44 @@ impl<K: Eq + Hash, V, S: BuildHasher> HashMap<K, V, S> {
         }
     }
 
+    pub fn get_disjoint_mut<Q: ?Sized + Hash + Eq, const N: usize>(&mut self, ks: [&Q; N]) -> [Option<&mut V>; N]
+    where
+        K: Borrow<Q>,
+    {
+        unsafe { self.get_disjoint_inner(ks, true) }
+    }
+
+    /// Two equal keys are UB.
+    pub unsafe fn get_disjoint_unchecked_mut<Q: ?Sized + Hash + Eq, const N: usize>(&mut self, ks: [&Q; N]) -> [Option<&mut V>; N]
+    where
+        K: Borrow<Q>,
+    {
+        unsafe { self.get_disjoint_inner(ks, false) }
+    }
+
+    /// Two keys that found the same bucket are the same key (hashbrown's get_disjoint_mut check).
+    fn get_disjoint_inner<Q: ?Sized + Hash + Eq, const N: usize>(&mut self, ks: [&Q; N], verify: bool) -> [Option<&mut V>; N]
+    where
+        K: Borrow<Q>,
+    {
+        let mut slots = [None; N];
+        for i in 0..N {
+            slots[i] = self.find(ks[i]);
+        }
+        if verify {
+            for i in 1..N {
+                if slots[i].is_some() && slots[..i].contains(&slots[i]) {
+                    crate::panicking::panic_str("duplicate keys found");
+                }
+            }
+        }
+        let table = &mut self.table as *mut RawTable<(K, V)>;
+        crate::array::from_fn(|i| match slots[i] {
+            Some(slot) => Some(unsafe { &mut (*table).get_mut(slot).1 }),
+            None => None,
+        })
+    }
+
     /// Inserts; on an existing key the value is replaced (the key is kept, as in real std).
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
         let hash = self.hash_of(&k);
@@ -207,7 +245,11 @@ impl<K: Eq + Hash, V, S: BuildHasher> HashMap<K, V, S> {
     }
 
     pub fn extract_if<F: FnMut(&K, &mut V) -> bool>(&mut self, pred: F) -> ExtractIf<'_, K, V, F> {
-        ExtractIf { table: &mut self.table, pos: 0, pred }
+        ExtractIf { inner: RawExtractIf::new(&mut self.table), pred }
+    }
+
+    pub(super) fn table_mut(&mut self) -> &mut RawTable<(K, V)> {
+        &mut self.table
     }
 }
 
@@ -598,25 +640,15 @@ impl<'a, K, V> Drop for Drain<'a, K, V> {
 }
 
 pub struct ExtractIf<'a, K, V, F> {
-    table: &'a mut RawTable<(K, V)>,
-    pos: usize,
+    inner: RawExtractIf<'a, (K, V)>,
     pred: F,
 }
 
 impl<'a, K, V, F: FnMut(&K, &mut V) -> bool> Iterator for ExtractIf<'a, K, V, F> {
     type Item = (K, V);
     fn next(&mut self) -> Option<(K, V)> {
-        while self.pos < self.table.buckets() {
-            let i = self.pos;
-            self.pos += 1;
-            if self.table.is_full_at(i) {
-                let kv = unsafe { self.table.get_mut(i) };
-                if (self.pred)(&kv.0, &mut kv.1) {
-                    return Some(self.table.remove(i));
-                }
-            }
-        }
-        None
+        let pred = &mut self.pred;
+        self.inner.next_if(|kv| pred(&kv.0, &mut kv.1))
     }
 }
 

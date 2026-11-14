@@ -583,6 +583,28 @@ impl<T> RawTable<T> {
     pub(crate) fn reset_after_drain(&mut self) { self.clear(); }
 }
 
+/// hashbrown's RawExtractIf: the bucket scan HashMap's and HashSet's extract_if share.
+pub(crate) struct RawExtractIf<'a, T> {
+    table: &'a mut RawTable<T>,
+    pos: usize,
+}
+
+impl<'a, T> RawExtractIf<'a, T> {
+    pub(crate) fn new(table: &'a mut RawTable<T>) -> RawExtractIf<'a, T> {
+        RawExtractIf { table, pos: 0 }
+    }
+    pub(crate) fn next_if<P: FnMut(&mut T) -> bool>(&mut self, mut pred: P) -> Option<T> {
+        while self.pos < self.table.buckets() {
+            let i = self.pos;
+            self.pos += 1;
+            if self.table.is_full_at(i) && pred(unsafe { self.table.get_mut(i) }) {
+                return Some(self.table.remove(i));
+            }
+        }
+        None
+    }
+}
+
 impl<T: Clone> RawTable<T> {
     pub(crate) fn clone_table(&self) -> RawTable<T> {
         let mut t = RawTable::new();

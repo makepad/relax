@@ -30,6 +30,20 @@ impl<T: UnwindSafe, F: UnwindSafe> UnwindSafe for crate::sync::LazyLock<T, F> {}
 impl<T: UnwindSafe + ?Sized> UnwindSafe for crate::sync::ReentrantLock<T> {}
 impl<T: RefUnwindSafe + ?Sized> RefUnwindSafe for crate::sync::ReentrantLock<T> {}
 impl<K, V, S> UnwindSafe for crate::collections::HashMap<K, V, S> where K: UnwindSafe, V: UnwindSafe, S: UnwindSafe {}
+impl<K, V, S> RefUnwindSafe for crate::collections::HashMap<K, V, S>
+where
+    K: RefUnwindSafe + UnwindSafe,
+    V: RefUnwindSafe + UnwindSafe,
+    S: UnwindSafe,
+{
+}
+impl<T, S> UnwindSafe for crate::collections::HashSet<T, S> where T: UnwindSafe, S: UnwindSafe {}
+impl<T, S> RefUnwindSafe for crate::collections::HashSet<T, S>
+where
+    T: RefUnwindSafe + UnwindSafe,
+    S: UnwindSafe,
+{
+}
 
 pub type PanicInfo<'a> = PanicHookInfo<'a>;
 
