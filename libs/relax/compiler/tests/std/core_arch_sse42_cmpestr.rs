@@ -11,24 +11,59 @@ fn m128(b: &[u8; 16]) -> __m128i {
 }
 
 const PAIRS: [(&[u8; 16], &[u8; 16]); 3] = [
-    (b"<&az\x80\xff09AZ\0\0\0\0\0\0", b"ab<cd&ef\x80\x7f\xffZ09az"),
+    (
+        b"<&az\x80\xff09AZ\0\0\0\0\0\0",
+        b"ab<cd&ef\x80\x7f\xffZ09az",
+    ),
     (b"cd\0\0\0\0\0\0\0\0\0\0\0\0\0\0", b"abccdxcdxxxxxxxc"),
-    (b"\x80\x7f\x01\xff\x00\x80\x7f\x01\x7f\x80\x01\x00\xff\x7f\x80\x01", b"\x7f\x80\x01\x00\xff\x7f\x80\x01\x80\x7f\x01\xff\x00\x80\x7f\x01"),
+    (
+        b"\x80\x7f\x01\xff\x00\x80\x7f\x01\x7f\x80\x01\x00\xff\x7f\x80\x01",
+        b"\x7f\x80\x01\x00\xff\x7f\x80\x01\x80\x7f\x01\xff\x00\x80\x7f\x01",
+    ),
 ];
 
-const LENGTHS: [(i32, i32); 9] = [(0, 0), (2, 8), (16, 16), (-3, 17), (17, -16), (i32::MIN, 5), (5, i32::MAX), (4, 4), (9, 12)];
+const LENGTHS: [i32; 10] = [0, 1, -1, 8, -8, 16, -16, 17, i32::MIN, i32::MAX];
 
 fn row<const IMM: i32>() {
     let mut index = String::new();
     let mut mask: u64 = 0xcbf2_9ce4_8422_2325;
     for (a, b) in PAIRS {
-        for (la, lb) in LENGTHS {
-            let (a, b) = (m128(a), m128(b));
-            let i = unsafe { _mm_cmpestri::<IMM>(a, la, b, lb) };
-            index.push_str(&format!(" {i}"));
-            let m: [u8; 16] = unsafe { std::mem::transmute(_mm_cmpestrm::<IMM>(a, la, b, lb)) };
-            for x in m {
-                mask = (mask ^ x as u64).wrapping_mul(0x100_0000_01b3);
+        let (a, b) = (m128(a), m128(b));
+        unsafe {
+            let implicit_mask: [u8; 16] = std::mem::transmute(_mm_cmpistrm::<IMM>(a, b));
+            let flags = [
+                _mm_cmpistri::<IMM>(a, b),
+                _mm_cmpistra::<IMM>(a, b),
+                _mm_cmpistrc::<IMM>(a, b),
+                _mm_cmpistro::<IMM>(a, b),
+                _mm_cmpistrs::<IMM>(a, b),
+                _mm_cmpistrz::<IMM>(a, b),
+            ];
+            for value in flags {
+                mask = (mask ^ value as u64).wrapping_mul(0x100_0000_01b3);
+            }
+            for value in implicit_mask {
+                mask = (mask ^ value as u64).wrapping_mul(0x100_0000_01b3);
+            }
+            for la in LENGTHS {
+                for lb in LENGTHS {
+                    let i = _mm_cmpestri::<IMM>(a, la, b, lb);
+                    index.push_str(&format!(" {i}"));
+                    let m: [u8; 16] = std::mem::transmute(_mm_cmpestrm::<IMM>(a, la, b, lb));
+                    let flags = [
+                        _mm_cmpestra::<IMM>(a, la, b, lb),
+                        _mm_cmpestrc::<IMM>(a, la, b, lb),
+                        _mm_cmpestro::<IMM>(a, la, b, lb),
+                        _mm_cmpestrs::<IMM>(a, la, b, lb),
+                        _mm_cmpestrz::<IMM>(a, la, b, lb),
+                    ];
+                    for value in flags {
+                        mask = (mask ^ value as u64).wrapping_mul(0x100_0000_01b3);
+                    }
+                    for value in m {
+                        mask = (mask ^ value as u64).wrapping_mul(0x100_0000_01b3);
+                    }
+                }
             }
         }
     }
@@ -51,8 +86,16 @@ fn a01_cmpestr_every_control_byte() {
 fn a02_extract_epi16() {
     let v = m128(&[1, 0, 0, 128, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 255, 255]);
     let lanes = unsafe {
-        [_mm_extract_epi16::<0>(v), _mm_extract_epi16::<1>(v), _mm_extract_epi16::<2>(v), _mm_extract_epi16::<3>(v),
-            _mm_extract_epi16::<4>(v), _mm_extract_epi16::<5>(v), _mm_extract_epi16::<6>(v), _mm_extract_epi16::<7>(v)]
+        [
+            _mm_extract_epi16::<0>(v),
+            _mm_extract_epi16::<1>(v),
+            _mm_extract_epi16::<2>(v),
+            _mm_extract_epi16::<3>(v),
+            _mm_extract_epi16::<4>(v),
+            _mm_extract_epi16::<5>(v),
+            _mm_extract_epi16::<6>(v),
+            _mm_extract_epi16::<7>(v),
+        ]
     };
     println!("| {lanes:?}");
 }
