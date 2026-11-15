@@ -30715,6 +30715,249 @@ pub fn _mm512_dpwssds_epi32(src: __m512i, a: __m512i, b: __m512i) -> __m512i {
     unsafe { i512_join(_mm256_dpwssds_epi32(i512_lo(&src), i512_lo(&a), i512_lo(&b)), _mm256_dpwssds_epi32(i512_hi(&src), i512_hi(&a), i512_hi(&b))) }
 }
 
+// ---- AVX512_BF16: bf16 conversions and the bf16 dot product ----
+// f32 -> BF16 bits, round-to-nearest-even as VCVTNE(2)PS2BF16 does: a NaN stays a
+// quiet NaN keeping its top payload bits, overflow rounds up to infinity, and a
+// denormal f32 input flushes to a signed zero (the instruction is always DAZ).
+fn f32_to_bf16_bits(x: f32) -> u16 {
+    let bits = x.to_bits();
+    if bits & 0x7f80_0000 == 0 {
+        return (bits >> 16) as u16 & 0x8000;
+    }
+    if bits & 0x7fff_ffff > 0x7f80_0000 {
+        return ((bits >> 16) as u16) | 0x0040;
+    }
+    ((bits.wrapping_add(0x7fff + ((bits >> 16) & 1))) >> 16) as u16
+}
+// BF16 bits -> f32, exact: bf16 is the high half of an f32.
+fn bf16_bits_to_f32(h: u16) -> f32 {
+    f32::from_bits((h as u32) << 16)
+}
+// A bf16 operand of VDPBF16PS: denormals flush to a signed zero.
+fn dpbf16_operand(h: u16) -> f32 {
+    if h & 0x7f80 == 0 {
+        f32::from_bits((h as u32 & 0x8000) << 16)
+    } else {
+        bf16_bits_to_f32(h)
+    }
+}
+// TwoSum: s + err == a + b exactly.
+fn twosum_f64(a: f64, b: f64) -> (f64, f64) {
+    let s = a + b;
+    let bp = s - a;
+    let ap = s - bp;
+    (s, (a - ap) + (b - bp))
+}
+// One stage of a VDPBF16PS accumulate: the exact f64 sum a + b rounded to f32 the
+// way the unit does it. Denormal f32 inputs were already flushed by the caller;
+// an exact result at or below the midpoint between the largest denormal and the
+// smallest normal flushes to a signed zero (FTZ), an overflowing sum becomes an
+// infinity, and a NaN sum is the invalid-operation default NaN.
+fn dpbf16_add(a: f64, b: f64) -> f32 {
+    // 2^-126 (smallest normal f32), 2^-126 - 2^-150 (flush boundary) and
+    // 2^128 - 2^103 (RNE overflow threshold).
+    const MIN: f64 = 1.1754943508222875e-38;
+    const MID: f64 = MIN - 7.006492321624085e-46;
+    const OVF: f64 = 3.4028235677973366e38;
+    let (s, e) = twosum_f64(a, b);
+    if s.is_nan() {
+        return f32::from_bits(0xffc0_0000);
+    }
+    if s.is_infinite() {
+        return s as f32;
+    }
+    // Preserve -0 + -0: adding the positive-zero residual would lose its sign.
+    if s == 0.0 && e == 0.0 {
+        return s as f32;
+    }
+    let t = s + e;
+    if t.abs() <= MID {
+        return 0.0f32.copysign(t as f32);
+    }
+    if t.abs() >= OVF {
+        return f32::INFINITY.copysign(t as f32);
+    }
+    round_with_residual_f32(s, e, 0)
+}
+// One VDPBF16PS dword lane: the products are exact, and the accumulate runs as
+// (src + a1*b1) + a0*b0 with each add rounded by dpbf16_add. NaN rules follow
+// the FMA core: a source NaN wins in operand order a0, b0, a1, b1, src and
+// propagates quieted; an invalid operation yields the x86 default NaN.
+fn dpbf16_lane(src: f32, a0: u16, b0: u16, a1: u16, b1: u16) -> f32 {
+    let src = if src.to_bits() & 0x7f80_0000 == 0 {
+        f32::from_bits(src.to_bits() & 0x8000_0000)
+    } else {
+        src
+    };
+    let (x0, y0) = (dpbf16_operand(a0), dpbf16_operand(b0));
+    let (x1, y1) = (dpbf16_operand(a1), dpbf16_operand(b1));
+    if x0.is_nan() {
+        return quiet_f32(x0);
+    }
+    if y0.is_nan() {
+        return quiet_f32(y0);
+    }
+    if x1.is_nan() {
+        return quiet_f32(x1);
+    }
+    if y1.is_nan() {
+        return quiet_f32(y1);
+    }
+    if src.is_nan() {
+        return quiet_f32(src);
+    }
+    let (p0, p1) = (x0 as f64 * (y0 as f64), x1 as f64 * (y1 as f64));
+    let s0 = dpbf16_add(src as f64, p1);
+    dpbf16_add(s0 as f64, p0)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm_cvtne2ps_pbh(a: __m128, b: __m128) -> __m128bh {
+    let mut r = [0u16; 8];
+    let mut i = 0;
+    while i < 4 {
+        r[i] = f32_to_bf16_bits(b.0[i]);
+        r[i + 4] = f32_to_bf16_bits(a.0[i]);
+        i += 1;
+    }
+    __m128bh(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm256_cvtne2ps_pbh(a: __m256, b: __m256) -> __m256bh {
+    let mut r = [0u16; 16];
+    let mut i = 0;
+    while i < 8 {
+        r[i] = f32_to_bf16_bits(b.0[i]);
+        r[i + 8] = f32_to_bf16_bits(a.0[i]);
+        i += 1;
+    }
+    __m256bh(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512f"))]
+pub fn _mm512_cvtne2ps_pbh(a: __m512, b: __m512) -> __m512bh {
+    let mut r = [0u16; 32];
+    let mut i = 0;
+    while i < 16 {
+        r[i] = f32_to_bf16_bits(b.0[i]);
+        r[i + 16] = f32_to_bf16_bits(a.0[i]);
+        i += 1;
+    }
+    __m512bh(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm_cvtneps_pbh(a: __m128) -> __m128bh {
+    let mut r = [0u16; 8];
+    let mut i = 0;
+    while i < 4 {
+        r[i] = f32_to_bf16_bits(a.0[i]);
+        i += 1;
+    }
+    __m128bh(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm256_cvtneps_pbh(a: __m256) -> __m128bh {
+    let mut r = [0u16; 8];
+    let mut i = 0;
+    while i < 8 {
+        r[i] = f32_to_bf16_bits(a.0[i]);
+        i += 1;
+    }
+    __m128bh(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512f"))]
+pub fn _mm512_cvtneps_pbh(a: __m512) -> __m256bh {
+    let mut r = [0u16; 16];
+    let mut i = 0;
+    while i < 16 {
+        r[i] = f32_to_bf16_bits(a.0[i]);
+        i += 1;
+    }
+    __m256bh(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm_cvtpbh_ps(a: __m128bh) -> __m128 {
+    let mut r = [0.0f32; 4];
+    let mut i = 0;
+    while i < 4 {
+        r[i] = bf16_bits_to_f32(a.0[i]);
+        i += 1;
+    }
+    __m128(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm256_cvtpbh_ps(a: __m128bh) -> __m256 {
+    let mut r = [0.0f32; 8];
+    let mut i = 0;
+    while i < 8 {
+        r[i] = bf16_bits_to_f32(a.0[i]);
+        i += 1;
+    }
+    __m256(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512f"))]
+pub fn _mm512_cvtpbh_ps(a: __m256bh) -> __m512 {
+    let mut r = [0.0f32; 16];
+    let mut i = 0;
+    while i < 16 {
+        r[i] = bf16_bits_to_f32(a.0[i]);
+        i += 1;
+    }
+    __m512(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm_dpbf16_ps(src: __m128, a: __m128bh, b: __m128bh) -> __m128 {
+    let mut r = [0.0f32; 4];
+    let mut i = 0;
+    while i < 4 {
+        r[i] = dpbf16_lane(src.0[i], a.0[2 * i], b.0[2 * i], a.0[2 * i + 1], b.0[2 * i + 1]);
+        i += 1;
+    }
+    __m128(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm256_dpbf16_ps(src: __m256, a: __m256bh, b: __m256bh) -> __m256 {
+    let mut r = [0.0f32; 8];
+    let mut i = 0;
+    while i < 8 {
+        r[i] = dpbf16_lane(src.0[i], a.0[2 * i], b.0[2 * i], a.0[2 * i + 1], b.0[2 * i + 1]);
+        i += 1;
+    }
+    __m256(r)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512f"))]
+pub fn _mm512_dpbf16_ps(src: __m512, a: __m512bh, b: __m512bh) -> __m512 {
+    let mut r = [0.0f32; 16];
+    let mut i = 0;
+    while i < 16 {
+        r[i] = dpbf16_lane(src.0[i], a.0[2 * i], b.0[2 * i], a.0[2 * i + 1], b.0[2 * i + 1]);
+        i += 1;
+    }
+    __m512(r)
+}
+
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vbmi"))]
 pub fn _mm_multishift_epi64_epi8(a: __m128i, b: __m128i) -> __m128i {
@@ -37399,6 +37642,49 @@ pub fn _mm256_mask_cvtepu8_epi64(src: __m256i, k: __mmask8, a: __m128i) -> __m25
 }
 
 #[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm256_mask_cvtne2ps_pbh(src: __m256bh, k: __mmask16, a: __m256, b: __m256) -> __m256bh {
+    let r = _mm256_cvtne2ps_pbh(a, b);
+    let mut o = src.0;
+    let mut i = 0;
+    while i < 16 {
+        if (k >> i) & 1 != 0 {
+            o[i] = r.0[i];
+        }
+        i += 1;
+    }
+    __m256bh(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm256_mask_cvtneps_pbh(src: __m128bh, k: __mmask8, a: __m256) -> __m128bh {
+    let mut o = src.0;
+    let mut i = 0;
+    while i < 8 {
+        if (k >> i) & 1 != 0 {
+            o[i] = f32_to_bf16_bits(a.0[i]);
+        }
+        i += 1;
+    }
+    __m128bh(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm256_mask_cvtpbh_ps(src: __m256, k: __mmask8, a: __m128bh) -> __m256 {
+    let mut o = src.0;
+    let mut i = 0;
+    while i < 8 {
+        if (k >> i) & 1 != 0 {
+            o[i] = bf16_bits_to_f32(a.0[i]);
+        }
+        i += 1;
+    }
+    __m256(o)
+}
+
+#[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
 pub fn _mm256_mask_cvtpd_epi32(src: __m128i, k: __mmask8, a: __m256d) -> __m128i {
     unsafe { let r = lanes128_u32(_mm256_cvtpd_epi32(a)); let s = lanes128_u32(src); let mut o = [0u32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u32(o) }
@@ -37654,6 +37940,20 @@ pub fn _mm256_mask_div_pd(src: __m256d, k: __mmask8, a: __m256d, b: __m256d) -> 
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
 pub fn _mm256_mask_div_ps(src: __m256, k: __mmask8, a: __m256, b: __m256) -> __m256 {
     unsafe { ps_join(_mm_mask_div_ps(ps_lo(&src), (k & 0xf) as __mmask8, ps_lo(&a), ps_lo(&b)), _mm_mask_div_ps(ps_hi(&src), ((k >> 4) as __mmask8), ps_hi(&a), ps_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm256_mask_dpbf16_ps(src: __m256, k: __mmask8, a: __m256bh, b: __m256bh) -> __m256 {
+    let mut o = src.0;
+    let mut i = 0;
+    while i < 8 {
+        if (k >> i) & 1 != 0 {
+            o[i] = dpbf16_lane(src.0[i], a.0[2 * i], b.0[2 * i], a.0[2 * i + 1], b.0[2 * i + 1]);
+        }
+        i += 1;
+    }
+    __m256(o)
 }
 
 #[inline]
@@ -39772,6 +40072,49 @@ pub fn _mm256_maskz_cvtepu8_epi64(k: __mmask8, a: __m128i) -> __m256i {
 }
 
 #[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm256_maskz_cvtne2ps_pbh(k: __mmask16, a: __m256, b: __m256) -> __m256bh {
+    let r = _mm256_cvtne2ps_pbh(a, b);
+    let mut o = [0u16; 16];
+    let mut i = 0;
+    while i < 16 {
+        if (k >> i) & 1 != 0 {
+            o[i] = r.0[i];
+        }
+        i += 1;
+    }
+    __m256bh(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm256_maskz_cvtneps_pbh(k: __mmask8, a: __m256) -> __m128bh {
+    let mut o = [0u16; 8];
+    let mut i = 0;
+    while i < 8 {
+        if (k >> i) & 1 != 0 {
+            o[i] = f32_to_bf16_bits(a.0[i]);
+        }
+        i += 1;
+    }
+    __m128bh(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm256_maskz_cvtpbh_ps(k: __mmask8, a: __m128bh) -> __m256 {
+    let mut o = [0.0f32; 8];
+    let mut i = 0;
+    while i < 8 {
+        if (k >> i) & 1 != 0 {
+            o[i] = bf16_bits_to_f32(a.0[i]);
+        }
+        i += 1;
+    }
+    __m256(o)
+}
+
+#[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
 pub fn _mm256_maskz_cvtpd_epi32(k: __mmask8, a: __m256d) -> __m128i {
     unsafe { let r = lanes128_u32(_mm256_cvtpd_epi32(a)); let s = [0u32; 4]; let mut o = [0u32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u32(o) }
@@ -39967,6 +40310,20 @@ pub fn _mm256_maskz_div_pd(k: __mmask8, a: __m256d, b: __m256d) -> __m256d {
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
 pub fn _mm256_maskz_div_ps(k: __mmask8, a: __m256, b: __m256) -> __m256 {
     unsafe { ps_join(_mm_maskz_div_ps((k & 0xf) as __mmask8, ps_lo(&a), ps_lo(&b)), _mm_maskz_div_ps(((k >> 4) as __mmask8), ps_hi(&a), ps_hi(&b))) }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm256_maskz_dpbf16_ps(k: __mmask8, src: __m256, a: __m256bh, b: __m256bh) -> __m256 {
+    let mut o = [0.0f32; 8];
+    let mut i = 0;
+    while i < 8 {
+        if (k >> i) & 1 != 0 {
+            o[i] = dpbf16_lane(src.0[i], a.0[2 * i], b.0[2 * i], a.0[2 * i + 1], b.0[2 * i + 1]);
+        }
+        i += 1;
+    }
+    __m256(o)
 }
 
 #[inline]
@@ -42534,6 +42891,49 @@ pub fn _mm512_mask_cvtepu8_epi64(src: __m512i, k: __mmask8, a: __m128i) -> __m51
 }
 
 #[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512f"))]
+pub fn _mm512_mask_cvtne2ps_pbh(src: __m512bh, k: __mmask32, a: __m512, b: __m512) -> __m512bh {
+    let r = _mm512_cvtne2ps_pbh(a, b);
+    let mut o = src.0;
+    let mut i = 0;
+    while i < 32 {
+        if (k >> i) & 1 != 0 {
+            o[i] = r.0[i];
+        }
+        i += 1;
+    }
+    __m512bh(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512f"))]
+pub fn _mm512_mask_cvtneps_pbh(src: __m256bh, k: __mmask16, a: __m512) -> __m256bh {
+    let mut o = src.0;
+    let mut i = 0;
+    while i < 16 {
+        if (k >> i) & 1 != 0 {
+            o[i] = f32_to_bf16_bits(a.0[i]);
+        }
+        i += 1;
+    }
+    __m256bh(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512f"))]
+pub fn _mm512_mask_cvtpbh_ps(src: __m512, k: __mmask16, a: __m256bh) -> __m512 {
+    let mut o = src.0;
+    let mut i = 0;
+    while i < 16 {
+        if (k >> i) & 1 != 0 {
+            o[i] = bf16_bits_to_f32(a.0[i]);
+        }
+        i += 1;
+    }
+    __m512(o)
+}
+
+#[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
 pub fn _mm512_mask_cvtpd_epi32(src: __m256i, k: __mmask8, a: __m512d) -> __m256i {
     unsafe { i_join(_mm256_mask_cvtpd_epi32(i_lo(&src), (k & 0xf) as __mmask8, pd512_lo(&a)), _mm256_mask_cvtpd_epi32(i_hi(&src), ((k >> 4) as __mmask8), pd512_hi(&a))) }
@@ -42913,6 +43313,20 @@ pub fn _mm512_mask_div_round_ps<const ROUNDING: i32>(
         embedded_round_end(ROUNDING, old);
         __m512(o)
     }
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512f"))]
+pub fn _mm512_mask_dpbf16_ps(src: __m512, k: __mmask16, a: __m512bh, b: __m512bh) -> __m512 {
+    let mut o = src.0;
+    let mut i = 0;
+    while i < 16 {
+        if (k >> i) & 1 != 0 {
+            o[i] = dpbf16_lane(src.0[i], a.0[2 * i], b.0[2 * i], a.0[2 * i + 1], b.0[2 * i + 1]);
+        }
+        i += 1;
+    }
+    __m512(o)
 }
 
 #[inline]
@@ -45621,6 +46035,49 @@ pub fn _mm512_maskz_cvtepu8_epi64(k: __mmask8, a: __m128i) -> __m512i {
 }
 
 #[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512f"))]
+pub fn _mm512_maskz_cvtne2ps_pbh(k: __mmask32, a: __m512, b: __m512) -> __m512bh {
+    let r = _mm512_cvtne2ps_pbh(a, b);
+    let mut o = [0u16; 32];
+    let mut i = 0;
+    while i < 32 {
+        if (k >> i) & 1 != 0 {
+            o[i] = r.0[i];
+        }
+        i += 1;
+    }
+    __m512bh(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512f"))]
+pub fn _mm512_maskz_cvtneps_pbh(k: __mmask16, a: __m512) -> __m256bh {
+    let mut o = [0u16; 16];
+    let mut i = 0;
+    while i < 16 {
+        if (k >> i) & 1 != 0 {
+            o[i] = f32_to_bf16_bits(a.0[i]);
+        }
+        i += 1;
+    }
+    __m256bh(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512f"))]
+pub fn _mm512_maskz_cvtpbh_ps(k: __mmask16, a: __m256bh) -> __m512 {
+    let mut o = [0.0f32; 16];
+    let mut i = 0;
+    while i < 16 {
+        if (k >> i) & 1 != 0 {
+            o[i] = bf16_bits_to_f32(a.0[i]);
+        }
+        i += 1;
+    }
+    __m512(o)
+}
+
+#[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
 pub fn _mm512_maskz_cvtpd_epi32(k: __mmask8, a: __m512d) -> __m256i {
     unsafe { i_join(_mm256_maskz_cvtpd_epi32((k & 0xf) as __mmask8, pd512_lo(&a)), _mm256_maskz_cvtpd_epi32(((k >> 4) as __mmask8), pd512_hi(&a))) }
@@ -45890,6 +46347,20 @@ pub fn _mm512_maskz_div_round_ps<const ROUNDING: i32>(
     b: __m512,
 ) -> __m512 {
     _mm512_mask_div_round_ps::<ROUNDING>(__m512([0.0; 16]), k, a, b)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512f"))]
+pub fn _mm512_maskz_dpbf16_ps(k: __mmask16, src: __m512, a: __m512bh, b: __m512bh) -> __m512 {
+    let mut o = [0.0f32; 16];
+    let mut i = 0;
+    while i < 16 {
+        if (k >> i) & 1 != 0 {
+            o[i] = dpbf16_lane(src.0[i], a.0[2 * i], b.0[2 * i], a.0[2 * i + 1], b.0[2 * i + 1]);
+        }
+        i += 1;
+    }
+    __m512(o)
 }
 
 #[inline]
@@ -48524,6 +48995,47 @@ pub fn _mm_mask_cvtepu8_epi64(src: __m128i, k: __mmask8, a: __m128i) -> __m128i 
 }
 
 #[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm_mask_cvtne2ps_pbh(src: __m128bh, k: __mmask8, a: __m128, b: __m128) -> __m128bh {
+    let r = _mm_cvtne2ps_pbh(a, b);
+    let mut o = src.0;
+    let mut i = 0;
+    while i < 8 {
+        if (k >> i) & 1 != 0 {
+            o[i] = r.0[i];
+        }
+        i += 1;
+    }
+    __m128bh(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm_mask_cvtneps_pbh(src: __m128bh, k: __mmask8, a: __m128) -> __m128bh {
+    let mut o = [0u16; 8];
+    let mut i = 0;
+    while i < 4 {
+        o[i] = if (k >> i) & 1 != 0 { f32_to_bf16_bits(a.0[i]) } else { src.0[i] };
+        i += 1;
+    }
+    __m128bh(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm_mask_cvtpbh_ps(src: __m128, k: __mmask8, a: __m128bh) -> __m128 {
+    let mut o = src.0;
+    let mut i = 0;
+    while i < 4 {
+        if (k >> i) & 1 != 0 {
+            o[i] = bf16_bits_to_f32(a.0[i]);
+        }
+        i += 1;
+    }
+    __m128(o)
+}
+
+#[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
 pub fn _mm_mask_cvtpd_epi32(src: __m128i, k: __mmask8, a: __m128d) -> __m128i {
     unsafe { let r = lanes128_u32(_mm_cvtpd_epi32(a)); let s = lanes128_u32(src); let s = lanes128_u32(src); let mut o = [0u32; 4]; let mut i = 0; while i < 4 { o[i] = if i < 2 { if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] } } else { 0u32 }; i += 1; } from128_u32(o) }
@@ -48864,6 +49376,20 @@ pub fn _mm_mask_div_ss(src: __m128, k: __mmask8, a: __m128, b: __m128) -> __m128
     } else {
         src.0[0]
     };
+    __m128(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm_mask_dpbf16_ps(src: __m128, k: __mmask8, a: __m128bh, b: __m128bh) -> __m128 {
+    let mut o = src.0;
+    let mut i = 0;
+    while i < 4 {
+        if (k >> i) & 1 != 0 {
+            o[i] = dpbf16_lane(src.0[i], a.0[2 * i], b.0[2 * i], a.0[2 * i + 1], b.0[2 * i + 1]);
+        }
+        i += 1;
+    }
     __m128(o)
 }
 
@@ -51628,6 +52154,49 @@ pub fn _mm_maskz_cvtepu8_epi64(k: __mmask8, a: __m128i) -> __m128i {
 }
 
 #[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm_maskz_cvtne2ps_pbh(k: __mmask8, a: __m128, b: __m128) -> __m128bh {
+    let r = _mm_cvtne2ps_pbh(a, b);
+    let mut o = [0u16; 8];
+    let mut i = 0;
+    while i < 8 {
+        if (k >> i) & 1 != 0 {
+            o[i] = r.0[i];
+        }
+        i += 1;
+    }
+    __m128bh(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm_maskz_cvtneps_pbh(k: __mmask8, a: __m128) -> __m128bh {
+    let mut o = [0u16; 8];
+    let mut i = 0;
+    while i < 4 {
+        if (k >> i) & 1 != 0 {
+            o[i] = f32_to_bf16_bits(a.0[i]);
+        }
+        i += 1;
+    }
+    __m128bh(o)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm_maskz_cvtpbh_ps(k: __mmask8, a: __m128bh) -> __m128 {
+    let mut o = [0.0f32; 4];
+    let mut i = 0;
+    while i < 4 {
+        if (k >> i) & 1 != 0 {
+            o[i] = bf16_bits_to_f32(a.0[i]);
+        }
+        i += 1;
+    }
+    __m128(o)
+}
+
+#[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f,avx512vl"))]
 pub fn _mm_maskz_cvtpd_epi32(k: __mmask8, a: __m128d) -> __m128i {
     unsafe { let r = lanes128_u32(_mm_cvtpd_epi32(a)); let s = [0u32; 4]; let mut o = [0u32; 4]; let mut i = 0; while i < 4 { o[i] = if (((k as u64) >> i) & 1 != 0) { r[i] } else { s[i] }; i += 1; } from128_u32(o) }
@@ -51859,6 +52428,20 @@ pub fn _mm_maskz_div_sd(k: __mmask8, a: __m128d, b: __m128d) -> __m128d {
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512f"))]
 pub fn _mm_maskz_div_ss(k: __mmask8, a: __m128, b: __m128) -> __m128 {
     _mm_mask_div_ss(__m128([0.0; 4]), k, a, b)
+}
+
+#[inline]
+#[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512bf16,avx512vl"))]
+pub fn _mm_maskz_dpbf16_ps(k: __mmask8, src: __m128, a: __m128bh, b: __m128bh) -> __m128 {
+    let mut o = [0.0f32; 4];
+    let mut i = 0;
+    while i < 4 {
+        if (k >> i) & 1 != 0 {
+            o[i] = dpbf16_lane(src.0[i], a.0[2 * i], b.0[2 * i], a.0[2 * i + 1], b.0[2 * i + 1]);
+        }
+        i += 1;
+    }
+    __m128(o)
 }
 
 #[inline]
