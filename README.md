@@ -112,7 +112,7 @@ the linker in between, with one Rust library.
 
 | The job | In the usual toolchain | **In Relax** |
 | --- | --- | --- |
-| Lex, parse and expand macros, `macro_rules!` and procedural | rustc | **relax-lex, relax-front** |
+| Lex, parse and expand macros, `macro_rules!` and procedural macros | rustc | **relax-lex, relax-front** |
 | Resolve names, solve traits, infer types, check borrows, evaluate constants | rustc | **relax-types** |
 | Optimise: inlining, folding, loops, ranges | rustc's MIR passes + LLVM | **relax-codegen** (O1 and O3) |
 | Allocate registers, emit x86-64 and AArch64 machine code | LLVM | **relax-backend** |
