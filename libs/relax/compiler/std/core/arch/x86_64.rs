@@ -30422,13 +30422,13 @@ fn sm4_key_f(t: u32) -> u32 {
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vp2intersect"))]
 pub unsafe fn _mm256_2intersect_epi32(a: __m256i, b: __m256i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
-    unsafe { let a = lanes256_i32(a); let b = lanes256_i32(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 8 { let mut j = 0; while j < 8 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1; *k2_out = k2; }
+    unsafe { let a = lanes256_i32(a); let b = lanes256_i32(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 8 { let mut j = 0; while j < 8 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1 as __mmask8; *k2_out = k2 as __mmask8; }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vp2intersect"))]
 pub unsafe fn _mm256_2intersect_epi64(a: __m256i, b: __m256i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
-    unsafe { let a = lanes256_i64(a); let b = lanes256_i64(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 4 { let mut j = 0; while j < 4 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1; *k2_out = k2; }
+    unsafe { let a = lanes256_i64(a); let b = lanes256_i64(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 4 { let mut j = 0; while j < 4 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1 as __mmask8; *k2_out = k2 as __mmask8; }
 }
 
 #[inline]
@@ -30512,13 +30512,13 @@ pub fn _mm256_sm4rnds4_epi32(a: __m256i, b: __m256i) -> __m256i {
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vp2intersect"))]
 pub unsafe fn _mm512_2intersect_epi32(a: __m512i, b: __m512i, k1_out: *mut __mmask16, k2_out: *mut __mmask16) -> () {
-    unsafe { let a = lanes512_i32(a); let b = lanes512_i32(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 16 { let mut j = 0; while j < 16 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1; *k2_out = k2; }
+    unsafe { let a = lanes512_i32(a); let b = lanes512_i32(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 16 { let mut j = 0; while j < 16 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1 as __mmask16; *k2_out = k2 as __mmask16; }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vp2intersect"))]
 pub unsafe fn _mm512_2intersect_epi64(a: __m512i, b: __m512i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
-    unsafe { let a = lanes512_i64(a); let b = lanes512_i64(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 8 { let mut j = 0; while j < 8 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1; *k2_out = k2; }
+    unsafe { let a = lanes512_i64(a); let b = lanes512_i64(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 8 { let mut j = 0; while j < 8 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1 as __mmask8; *k2_out = k2 as __mmask8; }
 }
 
 #[inline]
@@ -30554,13 +30554,13 @@ pub fn _mm512_popcnt_epi8(a: __m512i) -> __m512i {
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vp2intersect"))]
 pub unsafe fn _mm_2intersect_epi32(a: __m128i, b: __m128i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
-    unsafe { let a = lanes128_i32(a); let b = lanes128_i32(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 4 { let mut j = 0; while j < 4 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1; *k2_out = k2; }
+    unsafe { let a = lanes128_i32(a); let b = lanes128_i32(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 4 { let mut j = 0; while j < 4 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1 as __mmask8; *k2_out = k2 as __mmask8; }
 }
 
 #[inline]
 #[cfg_attr(any(target_arch="x86",target_arch="x86_64"), target_feature(enable="avx512vp2intersect"))]
 pub unsafe fn _mm_2intersect_epi64(a: __m128i, b: __m128i, k1_out: *mut __mmask8, k2_out: *mut __mmask8) -> () {
-    unsafe { let a = lanes128_i64(a); let b = lanes128_i64(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 2 { let mut j = 0; while j < 2 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1; *k2_out = k2; }
+    unsafe { let a = lanes128_i64(a); let b = lanes128_i64(b); let mut k1 = 0u64; let mut k2 = 0u64; let mut i = 0; while i < 2 { let mut j = 0; while j < 2 { if a[i] == b[j] { k1 |= 1 << i; k2 |= 1 << j; } j += 1; } i += 1; } *k1_out = k1 as __mmask8; *k2_out = k2 as __mmask8; }
 }
 
 #[inline]
