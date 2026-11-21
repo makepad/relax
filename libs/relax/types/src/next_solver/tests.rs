@@ -998,14 +998,26 @@ fn round28_unused_binder_does_not_allocate_universe() {
 }
 
 #[test]
-fn an_impl_item_assumes_its_header_well_formed() {
-    // tokio 1.54 `unsafe impl<S> ShardedListItem for Task<S>` with `struct Task<S: 'static>`:
-    // `Self::Target` normalizes away from `Task<S>`, but the impl header still implies `S: 'static`.
-    let (p, t) = program("struct NonNull<T>(*const T); trait Link { type Target; } trait Item: Link { fn id(target: NonNull<Self::Target>) -> usize; } \
-        struct Header; struct Task<S: 'static>(*const S); impl<S> Link for Task<S> { type Target = Header; } \
-        impl<S> Item for Task<S> { fn id(target: NonNull<Self::Target>) -> usize { 0 } }", "header_assumed_wf");
-    let method = *p.trait_item_def_id.keys().find(|&&d| p.name(d) == "id").unwrap();
-    assert!(t.compare_impl_item(&p, method).is_ok());
+fn an_impl_item_assumes_the_trait_signatures_projection_arguments_well_formed() {
+    // rustc implies bounds from the unnormalized trait signature, through its projections' arguments
+    for (label, source, accepted) in [
+        // tokio 1.54 `unsafe impl<S> ShardedListItem for Task<S>`: `Self::Target` normalizes away,
+        // but WF(`Task<S>`) still gives `S: 'static`
+        ("tokio", "struct NonNull<T>(*const T); trait Link { type Target; } trait Item: Link { fn id(target: NonNull<Self::Target>) -> usize; } \
+            struct Header; struct Task<S: 'static>(*const S); impl<S> Link for Task<S> { type Target = Header; } \
+            impl<S> Item for Task<S> { fn id(target: NonNull<Self::Target>) -> usize { 0 } }", true),
+        // an argument outside the header: WF(`&'m U`) gives `U: 'm`
+        ("method_args", "trait Link { type Target; } impl<'m, T> Link for &'m T { type Target = (); } \
+            trait Item { fn id<'m, U>(x: <&'m U as Link>::Target) where 'm: 'm; } struct P; \
+            impl Item for P { fn id<'m, U: 'm>(x: <&'m U as Link>::Target) where 'm: 'm {} }", true),
+        // the impl header alone implies nothing for the comparison (rustc: E0276)
+        ("header_region", "struct W<'a, T: 'a>(&'a T); trait Item { fn id(); } impl<'a, T> Item for W<'a, T> { fn id() where T: 'a {} }", false),
+        ("header_static", "struct S<T: 'static>(*const T); trait Item { fn id(); } impl<T> Item for S<T> { fn id() where T: 'static {} }", false),
+    ] {
+        let (p, t) = program(source, label);
+        let method = *p.trait_item_def_id.keys().find(|&&d| p.name(d) == "id").unwrap();
+        assert_eq!(t.compare_impl_item(&p, method).is_ok(), accepted, "{label}");
+    }
 }
 
 #[test]
