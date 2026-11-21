@@ -1001,11 +1001,10 @@ fn round28_unused_binder_does_not_allocate_universe() {
 fn an_impl_item_assumes_the_trait_signatures_projection_arguments_well_formed() {
     // rustc implies bounds from the unnormalized trait signature, through its projections' arguments
     for (label, source, accepted) in [
-        // tokio 1.54 `unsafe impl<S> ShardedListItem for Task<S>`: `Self::Target` normalizes away,
-        // but WF(`Task<S>`) still gives `S: 'static`
-        ("tokio", "struct NonNull<T>(*const T); trait Link { type Target; } trait Item: Link { fn id(target: NonNull<Self::Target>) -> usize; } \
-            struct Header; struct Task<S: 'static>(*const S); impl<S> Link for Task<S> { type Target = Header; } \
-            impl<S> Item for Task<S> { fn id(target: NonNull<Self::Target>) -> usize { 0 } }", true),
+        // a supertrait's `Self::Target` normalizes away, but WF(`W<T>`) still gives `T: 'static`
+        ("supertrait_projection", "struct Ptr<T>(*const T); trait Base { type Target; } trait Item: Base { fn id(target: Ptr<Self::Target>) -> usize; } \
+            struct Unit; struct W<T: 'static>(*const T); impl<T> Base for W<T> { type Target = Unit; } \
+            impl<T> Item for W<T> { fn id(target: Ptr<Self::Target>) -> usize { 0 } }", true),
         // an argument outside the header: WF(`&'m U`) gives `U: 'm`
         ("method_args", "trait Link { type Target; } impl<'m, T> Link for &'m T { type Target = (); } \
             trait Item { fn id<'m, U>(x: <&'m U as Link>::Target) where 'm: 'm; } struct P; \

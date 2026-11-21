@@ -103,8 +103,8 @@ impl Tcx {
                     if !wf_tys.contains(output) { wf_tys.push(*output); }
                 }
                 // rustc's implied bounds of the unnormalized signature go through its projections'
-                // arguments (tokio's `NonNull<<Task<S> as Link>::Target>` gives `S: 'static` from
-                // `Task<S: 'static>`); Relax's take nothing from inside an alias, so add them here
+                // arguments (`<W<T> as Tr>::A` gives WF(`W<T>`), so the bounds `W` declares on `T`);
+                // Relax's take nothing from inside an alias, so add them here
                 push_projection_args(&self.tys, raw_trait, &mut wf_tys);
                 let goals = infcx.at(prog, env.clone()).sub(impl_fn, trait_fn).map_err(|_| NoSolution)?;
                 ocx.register_obligations(goals);

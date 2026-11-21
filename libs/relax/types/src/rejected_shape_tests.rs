@@ -144,8 +144,8 @@ fn a_bound_only_an_alias_argument_carries_is_not_implied() {
     for f in ["fine", "rigid", "read", "guarded"] { assert!(!has(&e, f, ""), "{f}: {e:?}"); }
 }
 
-/// A `Drop` impl's outlives bounds hold when the struct's fields imply them (RFC 2093, lock_api 0.4
-/// `impl<'a, R: 'a, T: ?Sized + 'a> Drop for MutexGuard<'a, R, T>`); one the fields do not imply is E0367.
+/// A `Drop` impl's outlives bounds hold when the struct's fields imply them (RFC 2093: a field
+/// `&'a M<R, T>` gives `R: 'a, T: 'a`); one the fields do not imply is E0367.
 #[test]
 fn a_drop_impl_may_require_what_the_fields_imply() {
     let e0367 = |source: &str| errors(source).into_iter().filter(|e| e.contains("E0367")).collect::<Vec<_>>();
