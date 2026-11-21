@@ -38,11 +38,7 @@ impl WfPredicates<'_, '_> {
         // rustc `predicates_of` of an ADT includes its `inferred_outlives_of` (RFC 2093)
         if tcx.adts.contains_key(&def) {
             for p in crate::borrowck::implied_bounds::ImpliedBounds::inferred_outlives(tcx, self.prog, def) {
-                let kind = match p {
-                    crate::tcx::outlives::OutlivesPredicate::Region(a, b) => ClauseKind::RegionOutlives(a, b),
-                    crate::tcx::outlives::OutlivesPredicate::Type(t, r) => ClauseKind::TypeOutlives(t, r),
-                };
-                let p = tcx.instantiate_predicate(self.prog, def, args, &Predicate::dummy(PredicateKind::Clause(kind)));
+                let p = tcx.instantiate_predicate(self.prog, def, args, &p.into());
                 if !predicate_has_escaping_bound_vars(&tcx.tys, &p) { self.out.push(Goal { param_env: self.env.clone(), predicate: p }); }
             }
         }

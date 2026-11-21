@@ -102,14 +102,10 @@ impl Tcx {
                     for &ty in self.tys.list(*inputs) { if !wf_tys.contains(&ty) { wf_tys.push(ty); } }
                     if !wf_tys.contains(output) { wf_tys.push(*output); }
                 }
-                // rustc implies bounds from the unnormalized trait signature, through the
-                // arguments of its projections: `NonNull<<Task<S> as Link>::Target>` gives
-                // WF(`Task<S>`), so `S: 'static` from `struct Task<S: 'static>` (tokio 1.54's
-                // ShardedListItem). Relax's implied bounds take nothing from inside an alias
-                // (implied_outlives_bounds.rs, for fn bodies), so here the arguments are assumed
-                // WF themselves; the impl header is not (an impl method's stricter where-clause
-                // the header implies stays E0276 in rustc).
-                for arg in projection_args(&self.tys, raw_trait) { if !wf_tys.contains(&arg) { wf_tys.push(arg); } }
+                // rustc's implied bounds of the unnormalized signature go through its projections'
+                // arguments (tokio's `NonNull<<Task<S> as Link>::Target>` gives `S: 'static` from
+                // `Task<S: 'static>`); Relax's take nothing from inside an alias, so add them here
+                push_projection_args(&self.tys, raw_trait, &mut wf_tys);
                 let goals = infcx.at(prog, env.clone()).sub(impl_fn, trait_fn).map_err(|_| NoSolution)?;
                 ocx.register_obligations(goals);
                 if !self.tys.has_error(impl_fn) && !self.tys.has_error(trait_fn) {
@@ -323,22 +319,22 @@ impl Tcx {
     }
 }
 
-/// The type arguments of the projections in `t`, outermost first, nested ones too; an argument
-/// naming a binder inside `t` (a `for<'x>` fn pointer's) is left out.
-fn projection_args(tys: &crate::types::Types, t: TyId) -> Vec<TyId> {
+/// Pushes the type arguments of every projection in `t` onto `out`, skipping duplicates and
+/// arguments that name a binder inside `t`.
+fn push_projection_args(tys: &crate::types::Types, t: TyId, out: &mut Vec<TyId>) {
     use crate::types::fold::{TypeFolder, super_fold_ty};
     use crate::types::{AliasTy, AliasTyKind, Types, TypeFlags};
-    struct Args(Vec<TyId>);
-    impl TypeFolder for Args {
+    struct Args<'a>(&'a mut Vec<TyId>);
+    impl TypeFolder for Args<'_> {
         fn fold_flags(&self) -> Option<TypeFlags> { Some(TypeFlags::HAS_ALIAS) }
         fn fold_ty(&mut self, tys: &Types, t: TyId, depth: u32) -> TyId {
             if let TyKind::Alias(_, AliasTy { kind: AliasTyKind::Projection { .. }, args, .. }) = tys.kind(t) {
-                for &arg in tys.list(*args) { if !tys.has_vars_bound_at_or_above(arg, 0) { self.0.push(arg); } }
+                for &arg in tys.list(*args) {
+                    if !tys.has_vars_bound_at_or_above(arg, 0) && !self.0.contains(&arg) { self.0.push(arg); }
+                }
             }
             super_fold_ty(tys, t, self, depth)
         }
     }
-    let mut args = Args(Vec::new());
-    args.fold_ty(tys, t, 0);
-    args.0
+    Args(out).fold_ty(tys, t, 0);
 }
