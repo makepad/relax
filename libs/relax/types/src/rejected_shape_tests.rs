@@ -144,6 +144,20 @@ fn a_bound_only_an_alias_argument_carries_is_not_implied() {
     for f in ["fine", "rigid", "read", "guarded"] { assert!(!has(&e, f, ""), "{f}: {e:?}"); }
 }
 
+/// A `Drop` impl's outlives bounds hold when the struct's fields imply them (RFC 2093, lock_api 0.4
+/// `impl<'a, R: 'a, T: ?Sized + 'a> Drop for MutexGuard<'a, R, T>`); one the fields do not imply is E0367.
+#[test]
+fn a_drop_impl_may_require_what_the_fields_imply() {
+    let e = errors("
+        pub struct M<R, T: ?Sized> { pub r: R, pub t: T }
+        pub struct Guard<'a, R, T: ?Sized> { pub m: &'a M<R, T> }
+        impl<'a, R: 'a, T: ?Sized + 'a> Drop for Guard<'a, R, T> { fn drop(&mut self) {} }
+        pub struct Loose<'a, R> { pub r: &'a (), pub v: Vec<R> }
+        impl<'a, R: 'a> Drop for Loose<'a, R> { fn drop(&mut self) {} }");
+    // (Loose's alone)
+    assert_eq!(e.iter().filter(|e| e.contains("E0367")).count(), 1, "{e:?}");
+}
+
 /// An auto trait's goals are coinductive, but the where-clause of a written impl is no productive step:
 /// `unsafe impl<T> Sync for S<T> where S<T>: Sync` does not prove itself, nor do two impls that each ask for
 /// the other (E0275). A cycle through the fields of a type still holds.

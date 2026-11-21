@@ -1347,7 +1347,16 @@ pub mod obligations {
         // the predicates of the type, at the impl's arguments
         let adt_args = tcx.complete_args(prog, adt, tys.list(args), regions);
         let adt_env = tcx.param_env_id(prog, adt);
-        let clauses: Vec<_> = tcx.param_env_by_id(adt_env).clauses.iter().map(|p| tcx.instantiate_predicate(prog, adt, &adt_args, p)).collect();
+        let mut clauses: Vec<_> = tcx.param_env_by_id(adt_env).clauses.iter().map(|p| tcx.instantiate_predicate(prog, adt, &adt_args, p)).collect();
+        // rustc's param_env of an ADT includes its `inferred_outlives_of` (RFC 2093): lock_api's
+        // `impl<'a, R: 'a, T: 'a> Drop for MutexGuard<'a, R, T>` holds by the field `&'a Mutex<R, T>`
+        for p in crate::borrowck::implied_bounds::ImpliedBounds::inferred_outlives(tcx, prog, adt) {
+            let kind = match p {
+                crate::tcx::outlives::OutlivesPredicate::Region(a, b) => ClauseKind::RegionOutlives(a, b),
+                crate::tcx::outlives::OutlivesPredicate::Type(t, r) => ClauseKind::TypeOutlives(t, r),
+            };
+            clauses.push(tcx.instantiate_predicate(prog, adt, &adt_args, &Predicate::dummy(PredicateKind::Clause(kind))));
+        }
         let env = tcx.intern_param_env(crate::next_solver::ParamEnv { clauses: clauses.into() });
         let infcx = crate::infer::InferCtxt::for_item(tcx, prog, crate::tcx::TypingMode::non_body_analysis(), imp);
         let mut ocx = ObligationCtxt::new(&infcx, prog);
