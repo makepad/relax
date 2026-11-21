@@ -7263,7 +7263,10 @@ impl<'a> Lcx<'a> {
                 let mut pl = if self.unsized_ty(inner) { Place::Regs(p) } else { Place::Mem(p[0], 0) };
                 let mut pt = inner;
                 let saved = self.want_mut;
-                self.want_mut = m;
+                self.want_mut = match self.kind(target) {
+                    TyKind::Ref(tm, ..) => tm,
+                    _ => m,
+                };
                 for k in 0..n {
                     let (a, b) = self.deref_place(key | crate::typeck::DEREF_COERCE_KEY, k, pl, pt);
                     pl = a;

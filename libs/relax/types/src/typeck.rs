@@ -1761,7 +1761,7 @@ impl<'a> Fcx<'a> {
                 }
                 self.rollback_to(save);
                 if let Some(derefs) = self.deref_coercion(*ia, *ix) {
-                    self.set_deref_ref(ex.0, derefs, Some((*m2, x)));
+                    self.set_deref_ref(ex.0, derefs, *m2, x);
                     return Some(x);
                 }
             }
@@ -1888,6 +1888,8 @@ impl<'a> Fcx<'a> {
             // rustc coerce_borrowed_pointer: a cast of a reference place to a reference type reborrows (and
             // then unsizes), so a `&mut` place is not moved out by `place as &mut dyn Trait`.
             TyKind::Ref(tm, _, _) if sm || !tm => {
+                // `set_deref_ref` already recorded the borrow at the dereferenced target type.
+                if matches!(self.b.coerce(e.0), Some(Coerce::DerefRef(_))) { return; }
                 if sm || self.b.coerce(e.0).is_some() {
                     let b = self.borrow_target(source, tm);
                     self.set_reborrow(e.0, tm, b);
@@ -5419,13 +5421,13 @@ impl<'a> Fcx<'a> {
                     // as Option<u32>`, `(1, 2) as (u32, u32)` types its literals); when none applies
                     // the cast check reports E0605
                     self.try_coerce(xt, target, Some(*x));
-                } else if matches!((&kx, &kt), (TyKind::Ref(..), TyKind::Ref(_, p, _)) if matches!(self.tcx.tys.kind(self.shallow(*p)), TyKind::Infer(_))) {
-                    // `z as &_`: rustc checks the cast at the end of typeck (check_casts), where
-                    // try_coercion_cast's reborrow coercion decides `_` (`&mut i32 as &_`: i32)
+                } else if matches!((&kx, &kt), (TyKind::Ref(..), TyKind::Ref(_, p, _)) if self.has_open_infer(*p)) {
+                    // `z as &_` / `&v as &[_]`: rustc checks the cast at the end of typeck (check_casts),
+                    // where try_coercion_cast's reborrow/deref coercion decides `_` (`&mut i32 as &_`: i32)
                     self.deferred_casts.push((*x, xt, target));
-                } else if matches!((&kx, &kt), (TyKind::Ref(_, p, _), TyKind::Ref(..)) if matches!(self.tcx.tys.kind(self.shallow(*p)), TyKind::Infer(_))) {
-                    // `p.as_ref() as &Path`: the source referent is open (`AsRef<_>` with several
-                    // impls); rustc check_casts coerces at the end of typeck, which decides it
+                } else if matches!((&kx, &kt), (TyKind::Ref(_, p, _), TyKind::Ref(..)) if self.has_open_infer(*p)) {
+                    // `p.as_ref() as &Path` / `&Arc::from("hi") as &str`: the source referent is open;
+                    // rustc check_casts coerces at the end of typeck, which decides it
                     self.deferred_casts.push((*x, xt, target));
                 } else if let (TyKind::Ref(m1, a, _), TyKind::Ref(m2, bt, _)) = (&kx, &kt) {
                     // a cast is first a coercion when one applies (rustc cast.rs
@@ -5433,7 +5435,7 @@ impl<'a> Fcx<'a> {
                     let (sa, sb) = (self.shallow(*a), self.shallow(*bt));
                     if (*m1 || !*m2) && sa != sb && !matches!(self.tcx.tys.kind(sb), TyKind::Infer(_) | TyKind::Dyn(..)) {
                         if let Some(derefs) = self.deref_coercion(sa, sb) {
-                            self.set_deref_ref(x.0, derefs, None);
+                            self.set_deref_ref(x.0, derefs, *m2, target);
                         }
                     }
                 }

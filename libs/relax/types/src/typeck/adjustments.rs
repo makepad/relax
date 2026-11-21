@@ -182,14 +182,12 @@ impl Fcx<'_> {
     }
 
     /// The autoderef steps (`(overloaded call, type after the step)`) then a borrow of
-    /// mutability `mutable` of type `borrowed` (an existing borrow stays when `None`):
-    /// `&&T -> &T`, `&String -> &str`.
-    pub(super) fn set_deref_ref(&mut self, node: u32, derefs: Vec<(Option<OverloadedDeref>, TyId)>, mutable: Option<(bool, TyId)>) {
+    /// mutability `mutable` of type `borrowed`: `&&T -> &T`, `&String -> &str`.
+    pub(super) fn set_deref_ref(&mut self, node: u32, derefs: Vec<(Option<OverloadedDeref>, TyId)>, mutable: bool, borrowed: TyId) {
         let value = &mut self.adj_mut(node).value;
-        let old = value.iter().find_map(|a| match a.kind { Adjust::Borrow(m) => Some((m, a.target)), _ => None });
         value.clear();
         for (d, target) in derefs { value.push(Adjustment { kind: Adjust::Deref(d), target, mutbl: false }); }
-        if let Some((m, target)) = mutable.or(old) { value.push(Adjustment { kind: Adjust::Borrow(m), target, mutbl: false }); }
+        value.push(Adjustment { kind: Adjust::Borrow(mutable), target: borrowed, mutbl: false });
     }
 
     /// Reborrow the value of `node` as `target` (kept in front of a pointer coercion).
