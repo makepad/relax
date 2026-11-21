@@ -1131,3 +1131,28 @@ fn an_inline_asm_body_is_unsupported_not_an_internal_failure() {
     assert!(unsupported.len() == 1 && unsupported[0].ends_with("spin: inline asm"), "{unsupported:?}");
     assert!(errors.len() == 1 && errors[0].ends_with("bad E0515"), "the other bodies are checked: {errors:?}");
 }
+
+/// `impl Trait` methods in a trait and in the impl borrow-check: the check equates each
+/// method's own opaque with its body's hidden type, in that body's defining scope.
+#[test]
+fn a_trait_provided_method_returning_impl_trait_borrow_checks() {
+    let (errors, unchecked) = borrowck_source("
+        pub trait T {
+            fn once(&self) -> impl Iterator<Item = u8> { std::iter::once(7u8) }
+        }
+        pub trait Borrowing {
+            fn range(&self) -> Option<&u8>;
+            fn pair(&self) -> impl DoubleEndedIterator<Item = u8> {
+                self.range().into_iter().flat_map(|x| [*x, *x])
+            }
+        }
+        pub struct S(pub u8);
+        impl T for S {}
+        impl Borrowing for S {
+            fn range(&self) -> Option<&u8> { Some(&self.0) }
+            fn pair(&self) -> impl DoubleEndedIterator<Item = u8> { std::iter::once(self.0).chain(std::iter::once(self.0)) }
+        }
+        pub fn use_it(s: &S) -> usize { s.pair().count() + s.once().count() }");
+    assert!(unchecked.is_empty(), "{unchecked:?}");
+    assert!(errors.is_empty(), "{errors:?}");
+}

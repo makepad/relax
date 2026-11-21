@@ -230,11 +230,14 @@ impl<'a> Cx<'a> {
     fn declared_output(&self, def: crate::program::DefId) -> Option<TyId> {
         let tcx = self.tcx();
         let sig = tcx.fn_item_sig(self.prog(), def)?;
+        // (a trait method's `impl Trait` output is the associated item's projection; the
+        // provided body defines the trait's opaque type, like a free function's does)
+        let ret = tcx.own_rpitit_opaques(self.prog(), def, sig.ret);
         // (only an `impl Trait` output differs from the typeck's own, normalized signature)
-        if !tcx.tys.has_opaque(sig.ret) { return None; }
+        if !tcx.tys.has_opaque(ret) { return None; }
         let late = |v: crate::types::BoundVar| tcx.tys.intern_region(crate::types::RegionKind::ReLateParam(crate::types::RegionScope::Item(def), crate::types::LateParamKind::Anon(v.0)));
         let mut f = crate::types::fold::BoundVarReplacer::new(late, |_| panic!("signature bound type"));
-        Some(f.instantiate(&tcx.tys, sig.ret))
+        Some(f.instantiate(&tcx.tys, ret))
     }
 
     // ---- bodies

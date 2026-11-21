@@ -339,6 +339,16 @@ impl TypeFolder for AssocTyToOpaque<'_> {
 }
 
 impl Tcx {
+    /// The `impl Trait` returns of `fn_def_id`'s own signature are projections of the associated
+    /// item the desugaring made (`<Self as T>::Assoc`): the fn's body defines the opaque type it
+    /// stands for, which is what `type_of` of the item is.
+    pub(crate) fn own_rpitit_opaques(&self, prog: &Program, fn_def_id: DefId, ty: TyId) -> TyId {
+        let mut folder = AssocTyToOpaque { tcx: self, prog, fn_def_id };
+        TypeFolder::fold_ty(&mut folder, &self.tys, ty, 0)
+    }
+}
+
+impl Tcx {
     /// item_bounds.rs: opaque bounds are lowered in their own early binder.
     fn opaque_explicit_bounds(&self, prog: &Program, opaque: DefId) -> Vec<Predicate> {
         let owner = prog.opaque_owner(opaque);
