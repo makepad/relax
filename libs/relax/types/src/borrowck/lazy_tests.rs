@@ -44,8 +44,9 @@ struct TestFront {
     lock: std::sync::RwLock<()>,
 }
 impl TestFront {
-    fn new(block_call: u64) -> Arc<Self> {
-        let (prog, tcx) = fixture("app", SOURCE);
+    fn new(block_call: u64) -> Arc<Self> { Self::of(SOURCE, block_call) }
+    fn of(source: &str, block_call: u64) -> Arc<Self> {
+        let (prog, tcx) = fixture("app", source);
         Arc::new(Self { prog, tcx, quiet: AtomicU64::new(0), calls: AtomicU64::new(0), block_call,
             entered: Barrier::new(2), release: Barrier::new(2), panic_stored: AtomicBool::new(false), lock: std::sync::RwLock::new(()) })
     }
@@ -460,6 +461,31 @@ fn a_patch_mid_pass_keeps_the_queued_checks_of_unchanged_owners() {
     let keys = take_verdict_keys();
     assert!(keys.contains(&(3, StoredVerdict::Clean)), "kept keyed: stored under the key it was queued with: {keys:?}");
     assert!(keys.iter().all(|(k, _)| *k != 4), "kept over a declaration it may read: stored under no key: {keys:?}");
+    stop();
+}
+
+/// The verdicts are those of every checker of the process: the program's, and the proc-macro
+/// world's, which a live edit's derive builds again beside the program. A patch of the program asks
+/// about the program's owners only. The world's name definitions of the world's program, past the
+/// program's last one for a world bigger than the program: the carry-over read them as the
+/// program's ("internal compiler error applying the edit", an index out of bounds).
+#[test]
+fn a_live_patch_asks_about_its_own_programs_owners_only() {
+    if child("a_live_patch_asks_about_its_own_programs_owners_only") { return; }
+    let front = TestFront::new(0);
+    let world_source = format!("{SOURCE}{}fn late() {{}}\n", (0..8).map(|i| format!("fn pad{i}() {{}}\n")).collect::<String>());
+    let world = TestFront::of(&world_source, 0);
+    let ours = front.enqueue("clean", false);
+    let theirs = world.enqueue("late", false);
+    assert!(theirs.0 as usize >= front.prog.defs.len(), "the world's owner is past the program's last definition");
+    front.ungate(); world.ungate();
+    assert_eq!(wait_verdict(&front, ours), FnVerdict::Clean);
+    assert_eq!(wait_verdict(&world, theirs), FnVerdict::Clean);
+    let asked = std::sync::Mutex::new(Vec::new());
+    front.patch(&|d| { asked.lock().unwrap().push(d); Carry::Drop });
+    assert_eq!(*asked.lock().unwrap(), vec![ours], "the patch asks about the program's own owners");
+    assert_eq!(verdict(front.identity(), ours, &[], front.epoch()), FnVerdict::Unchecked("not queued".into()));
+    assert_eq!(verdict(world.identity(), theirs, &[], world.epoch()), FnVerdict::Clean, "the world's verdict stays");
     stop();
 }
 

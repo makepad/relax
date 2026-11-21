@@ -166,7 +166,11 @@ pub fn carry_epoch(src: usize, from: u64, to: u64, owner: &dyn Fn(DefId) -> Carr
     // the dropped keys are found from the verdicts of the dropped owners: no pass over the
     // queue or the seen set (they hold the whole program)
     let mut verdicts = VERDICTS.lock().unwrap_or_else(|e| e.into_inner());
-    let moved: Vec<(DefId, Carry)> = verdicts.keys().copied().filter_map(|d| {
+    // `owner` is asked about `src`'s owners only: the verdicts are of every checker, and another
+    // one's (the macro world's, alive beside the program again once a live edit's derive rebuilt
+    // it) name definitions of its own program, which `src`'s cannot read (an index past its last
+    // definition: "internal compiler error applying the edit")
+    let moved: Vec<(DefId, Carry)> = verdicts.iter().filter(|(_, instances)| instances.keys().any(|k| k.0 == src)).filter_map(|(&d, _)| {
         let how = if d == crate::program::NO_DEF { Carry::Drop } else { owner(d) };
         (how != Carry::Keep).then_some((d, how))
     }).collect();
