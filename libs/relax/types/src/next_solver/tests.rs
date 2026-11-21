@@ -998,6 +998,17 @@ fn round28_unused_binder_does_not_allocate_universe() {
 }
 
 #[test]
+fn an_impl_item_assumes_its_header_well_formed() {
+    // tokio 1.54 `unsafe impl<S> ShardedListItem for Task<S>` with `struct Task<S: 'static>`:
+    // `Self::Target` normalizes away from `Task<S>`, but the impl header still implies `S: 'static`.
+    let (p, t) = program("struct NonNull<T>(*const T); trait Link { type Target; } trait Item: Link { fn id(target: NonNull<Self::Target>) -> usize; } \
+        struct Header; struct Task<S: 'static>(*const S); impl<S> Link for Task<S> { type Target = Header; } \
+        impl<S> Item for Task<S> { fn id(target: NonNull<Self::Target>) -> usize { 0 } }", "header_assumed_wf");
+    let method = *p.trait_item_def_id.keys().find(|&&d| p.name(d) == "id").unwrap();
+    assert!(t.compare_impl_item(&p, method).is_ok());
+}
+
+#[test]
 fn round28_const_method_index_after_lifetime() {
     let (p, t) = program("trait Tr { fn f<const N: usize>(); } impl<'a> Tr for &'a u8 { fn f<const N: usize>() {} }", "r28_const_method");
     let method = p.defs.iter().enumerate().find(|(_, d)| p.syms.str(d.name) == "f" && p.def(d.parent).kind == crate::program::DefKind::Impl).map(|(i, _)| DefId(i as u32)).unwrap();

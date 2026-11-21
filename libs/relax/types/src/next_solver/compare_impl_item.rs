@@ -122,6 +122,13 @@ impl Tcx {
             _ => unreachable!("compare_impl_item requires an associated item"),
         }
         ocx.evaluate_obligations_error_on_ambiguity()?;
+        // The impl header is assumed WF (wfcheck proves it at the impl, as check_type_bounds
+        // assumes below). rustc gets its bounds through the unnormalized trait signature
+        // (`NonNull<<Task<S> as Link>::Target>` implies `S: 'static` from `struct Task<S:
+        // 'static>`); here an alias implies nothing (implied_outlives_bounds.rs), so the
+        // header's own bounds come from the header.
+        wf_tys.push(self.impl_self[&imp]);
+        if let Some(args) = self.impl_trait_args.get(&imp) { wf_tys.extend_from_slice(args); }
         if !infcx.resolve_regions(prog, env, &wf_tys).is_empty() { return Err(NoSolution); }
         if prog.def(method).kind == DefKind::AssocTy { self.check_type_bounds(prog, method, trait_method)?; }
         Ok(())
