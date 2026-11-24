@@ -1,11 +1,11 @@
 //! The sampling profiler (DESIGN.md §7): where CPU time goes, per thread, JIT and host frames
 //! together, without the owner and without a debugger.
 //!
-//! - Linux: per-thread perf_event task-clock samples carrying the user registers and a copy of the
+//! - x86-64 Linux: per-thread perf_event task-clock samples carrying the user registers and a copy of the
 //!   top of the stack (PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER, as `perf --call-graph
 //!   dwarf` does); the walk (CFI for host frames, frame records for JIT frames) runs here on the
 //!   copy. No signal reaches the program.
-//! - macOS and Android (perf_event is closed to apps there): the threads whose CPU time moved are
+//! - AArch64 Linux, macOS and Android: the threads whose CPU time moved are
 //!   suspended one at a time and walked (os capture), at most `hz` times a second.
 //!
 //! Samples are CPU time only: waiting threads do not show (why-hung and the wait registry say what
@@ -51,8 +51,8 @@ impl Ev {
         })
     }
     /// The sampling period of a hardware event for about `hz` samples per second of a busy
-    /// thread (~4 G cycles or instructions a second; misses far fewer). Linux only (perf_event).
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    /// thread (~4 G cycles or instructions a second; misses far fewer) in the x86-64 Linux perf sampler.
+    #[cfg_attr(not(all(target_os = "linux", target_arch = "x86_64")), allow(dead_code))]
     pub fn period(self, hz: u64) -> u64 {
         let per_s: u64 = match self {
             Ev::Cpu => 1_000_000_000,
@@ -114,12 +114,12 @@ pub fn collect_opts(secs: f64, hz: u64, ev: Ev, wall: bool, want: &dyn Fn(&super
 }
 
 /// Stack samples of threads `tids` of another process, walked by its CFI (`vsnative pid=`).
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub fn collect_foreign(tids: &[u64], secs: f64, hz: u64, ev: Ev, cfi: &super::cfi::Foreign, cancel: &dyn Fn() -> bool) -> (Vec<Sample>, u64, Vec<String>) {
     imp::collect_foreign(tids, secs, hz, ev, cfi, cancel)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod imp {
     use super::{Run, Sample};
     use crate::inspect::cfi::Regs;
@@ -477,15 +477,15 @@ mod imp {
     }
 }
 
-#[cfg(any(target_vendor = "apple", target_os = "android"))]
+#[cfg(any(target_vendor = "apple", target_os = "android", all(target_os = "linux", target_arch = "aarch64")))]
 mod imp {
     use super::{Run, Sample};
 
-    /// On a CPU right now (macOS: the Mach run state; Android: /proc's `R`).
+    /// On a CPU right now (macOS: the Mach run state; Linux and Android: /proc's `R`).
     fn on_cpu(t: &crate::inspect::threads::Thread) -> bool {
         #[cfg(target_vendor = "apple")]
         { crate::inspect::threads::running(t) }
-        #[cfg(target_os = "android")]
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         { t.state == "running" }
     }
 
@@ -501,6 +501,10 @@ mod imp {
         #[cfg(target_os = "android")]
         if ev != super::Ev::Cpu {
             notes.push(format!("{} cannot be sampled in an Android app (perf_event is closed to apps); CPU time instead", ev.name()));
+        }
+        #[cfg(target_os = "linux")]
+        if ev != super::Ev::Cpu {
+            notes.push(format!("{} sampling is unavailable on AArch64 Linux; CPU time instead", ev.name()));
         }
         #[cfg(target_vendor = "apple")]
         if ev != super::Ev::Cpu {

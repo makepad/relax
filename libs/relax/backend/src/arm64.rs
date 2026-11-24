@@ -327,7 +327,8 @@ pub fn join_part(host: Compiled, part: Compiled) -> Result<Compiled, String> {
 pub struct Env {
     /// where the function slots' tables and thunks are
     pub slots: SlotsPtr,
-    /// pthread TSD slot holding this thread's thread-local block (0 = none yet)
+    /// Where the runtime's per-thread block pointer is. Native Linux uses a byte offset from
+    /// the thread pointer. Linux under Relax uses a two-load key. Apple and Android use a slot index.
     pub tls_key: u64,
     /// glue that allocates the calling thread's block: returns it in x16, preserves all else
     pub tls_slow: u64,
@@ -361,8 +362,7 @@ impl Env {
             Reloc::Slot(id) => self.slots.table(id),
             Reloc::Thunk(id) => self.slots.callable(id),
             Reloc::Call(id) => self.slots.thunk(id),
-            // the TSD slot's byte offset (ldr x16, [x16, x17])
-            Reloc::TlsKey => self.tls_key * 8,
+            Reloc::TlsKey => tls_byte_offset(self.tls_key),
             Reloc::TlsSlow => self.tls_slow,
             Reloc::Resume => self.resume,
             Reloc::Value(v) => v,
@@ -2437,16 +2437,12 @@ impl<'a> Gen<'a> {
         }
     }
 
-    /// x16 = this thread's thread-local block. Fast path: the block pointer sits in a word of
-    /// the thread's slot array (macOS: pthread TSD slot `key` at tpidrro_el0; Android: bionic
-    /// TLS_SLOT_APP at tpidr_el0, os/tls.rs); a null slot calls `tls_slow`, which keeps every
-    /// register but x16/x17 (glue), so no saves here; lr is preserved by the frame record.
+    /// x16 = this thread's thread-local block (`Asm::load_tls_block`). A null cell calls
+    /// `tls_slow`, which keeps every register but x16/x17, so no saves here. The frame record
+    /// preserves lr.
     fn tls_block_ip0(&mut self) {
-        // mrs x16, <thread slot base>; and x16, x16, #~7; ldr x17, =key*8; ldr x16, [x16, x17]
-        self.a.e(MRS_SLOT_BASE | IP0 as u32);
-        self.a.e(0x9243_F000 | (IP0 as u32) << 5 | IP0 as u32);
         self.ldr_reloc(IP1, Reloc::TlsKey);
-        self.a.e(0xF860_6800 | (IP1 as u32) << 16 | (IP0 as u32) << 5 | IP0 as u32);
+        self.a.load_tls_block(TLS_TWO_LOAD);
         let p = self.a.cbnz(IP0);
         if self.near {
             self.bl_reloc(Reloc::TlsSlow);
@@ -2465,6 +2461,17 @@ impl<'a> Gen<'a> {
         self.ldr_reloc(IP1, Reloc::Sym(off));
         let rd = self.def_i(d, S0);
         self.a.rrr(0x8B00_0000, rd, IP0, IP1);
+        self.fin_i(d, rd);
+    }
+
+    /// d = the Linux thread pointer + the signed static TLS offset assigned by the runtime.
+    #[cfg(target_os = "linux")]
+    fn tls_static(&mut self, d: VReg, off: Sym) {
+        self.a.e(MRS_SLOT_BASE | IP0 as u32);
+        self.ldr_reloc(IP1, Reloc::Sym(off));
+        let rd = self.def_i(d, S0);
+        // add xD, x16, w17, sxtw
+        self.a.rrr(0x8B20_C000, rd, IP0, IP1);
         self.fin_i(d, rd);
     }
 
@@ -4667,7 +4674,9 @@ impl<'a> Gen<'a> {
             }
             Inst::AtomicLoad(..) | Inst::AtomicStore(..) | Inst::AtomicRmw(..) | Inst::AtomicCas(..) | Inst::Fence(..) => self.atomic(i),
             Inst::TlsAddr(d, off) => self.tls_addr(*d, *off),
-            // static TLS is placed for x86-64 Linux only (compiler os/tls.rs)
+            #[cfg(target_os = "linux")]
+            Inst::TlsStatic(d, off) => self.tls_static(*d, *off),
+            #[cfg(not(target_os = "linux"))]
             Inst::TlsStatic(..) => unreachable!("arm64: no static TLS placement"),
             Inst::Cpuid(..) | Inst::Xgetbv(..) => unreachable!("x86 CPU query rejected before arm64 emission"),
             Inst::FpEnv(true, x) => {
@@ -6019,10 +6028,8 @@ pub fn thunk(slot_addr: u64) -> Vec<u8> {
 /// veneer scratch registers x16/x17 change; the slow TLS allocation preserves the arguments.
 pub fn entry_thunk(id: u32, tls: u32, key: u64, slow: u64, body: u64) -> Vec<u8> {
     let mut a = Asm { w: Vec::new(), flags: None };
-    a.e(MRS_SLOT_BASE | IP0 as u32);
-    a.e(0x9243_F000 | (IP0 as u32) << 5 | IP0 as u32);
-    a.mov_imm(IP1, (key * 8) as i64);
-    a.e(0xF860_6800 | (IP1 as u32) << 16 | (IP0 as u32) << 5 | IP0 as u32);
+    a.mov_imm(IP1, tls_byte_offset(key) as i64);
+    a.load_tls_block(TLS_TWO_LOAD);
     let ready = a.cbnz(IP0);
     a.stp_pre(FP, LR, SP, -16);
     a.mov_imm64_fixed(IP1, slow);
@@ -6250,16 +6257,12 @@ pub fn jump_with_arg0(arg: u64, target: u64) -> Vec<u8> {
 pub const TLS_SLOW_FRAME: u32 = 640;
 
 /// This thread's thread-local block in x16, preserving every other register JIT code may hold
-/// (x0-x15, q0-q31): the fast path `tls_addr` inlines (slot `key` of the thread's slot
-/// array), and when the slot is still null `host() -> block`. `tls_addr` calls it after its own
-/// fast path found null; a prologue that needs the domain base calls it directly.
+/// (x0-x15, q0-q31). Try the same TLS load as the inline paths, then call `host() -> block`
+/// if it returns null.
 pub fn tls_slow(host: u64, key: u64) -> Vec<u8> {
     let mut a = Asm { w: Vec::new(), flags: None };
-    // mrs x16, <slot base>; and x16, x16, #~7; mov x17, #key*8; ldr x16, [x16, x17]
-    a.e(MRS_SLOT_BASE | IP0 as u32);
-    a.e(0x9243_F000 | (IP0 as u32) << 5 | IP0 as u32);
-    a.mov_imm(IP1, (key * 8) as i64);
-    a.e(0xF860_6800 | (IP1 as u32) << 16 | (IP0 as u32) << 5 | IP0 as u32);
+    a.mov_imm(IP1, tls_byte_offset(key) as i64);
+    a.load_tls_block(TLS_TWO_LOAD);
     // cbz x16, +2 (past the ret): the block exists, return it
     a.e(0xB400_0000 | 2 << 5 | IP0 as u32);
     a.ret();
@@ -6288,14 +6291,66 @@ pub fn tls_slow(host: u64, key: u64) -> Vec<u8> {
     words_to_bytes(&a.w)
 }
 
-/// `mrs xN, <register holding the thread's slot array>` (N or-ed in). macOS: tpidrro_el0 (the
-/// pthread TSD base; its low 3 bits carry the cpu number, masked off after). Android: tpidr_el0,
-/// bionic's thread pointer = its TLS slot array (bionic libc/platform/bionic/tls_defines.h).
-#[cfg(not(target_os = "android"))]
+// A Linux runtime built under Relax reads the outermost runtime's TLS cell, then its own
+// word in the outer block. A native runtime reads its static TLS cell directly (os/tls.rs).
+const TLS_TWO_LOAD: bool = cfg!(all(target_os = "linux", relax));
+
+impl Asm {
+    /// x16 holds the thread-local block or zero. x17 supplies either a byte offset from
+    /// the thread base or a pair of offsets (signed high half, unsigned low half).
+    fn load_tls_block(&mut self, two_load: bool) {
+        self.e(MRS_SLOT_BASE | IP0 as u32);
+        if two_load {
+            // add x16, x16, x17, asr #32
+            self.rrr(0x8B80_8000, IP0, IP0, IP1);
+            self.ldst(LDRX, 8, IP0, IP0, 0);
+            let empty = self.cbz(IP0);
+            // ldr x16, [x16, w17, uxtw]
+            self.rrr(0xF860_4800, IP0, IP0, IP1);
+            self.patch(empty, self.pos());
+        } else {
+            // the low bits of Darwin's TSD base identify the CPU
+            self.e(0x9243_F000 | (IP0 as u32) << 5 | IP0 as u32);
+            // ldr x16, [x16, x17]
+            self.rrr(0xF860_6800, IP0, IP0, IP1);
+        }
+    }
+}
+
+/// Test and validate the two-load key with the same sequence emitted by a nested runtime.
+#[cfg(target_os = "linux")]
+pub fn tls2_reader() -> Vec<u8> {
+    let mut a = Asm { w: Vec::new(), flags: None };
+    a.mov(IP1, 0);
+    a.load_tls_block(true);
+    a.mov(0, IP0);
+    a.ret();
+    words_to_bytes(&a.w)
+}
+
+fn tls_byte_offset(key: u64) -> u64 {
+    #[cfg(target_os = "linux")]
+    { key }
+    #[cfg(not(target_os = "linux"))]
+    { key * 8 }
+}
+
+/// `mrs xN, <register holding the thread base>` (N or-ed in). Darwin uses tpidrro_el0
+/// for the pthread TSD base. Its low 3 bits carry the CPU number, which the reads mask
+/// off. Android uses tpidr_el0 for bionic's TLS slot array
+/// (libc/platform/bionic/tls_defines.h). Linux uses tpidr_el0 for the ABI thread pointer
+/// and adds a byte offset to reach a cell in the executable's static TLS (os/tls.rs).
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
 const MRS_SLOT_BASE: u32 = 0xD53B_D060;
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 const MRS_SLOT_BASE: u32 = 0xD53B_D040;
 
+#[cfg(target_os = "linux")]
+pub fn thread_pointer_reader() -> Vec<u8> {
+    words_to_bytes(&[MRS_SLOT_BASE, 0xD65F_03C0]) // mrs x0, tpidr_el0; ret
+}
+
+#[cfg(not(target_os = "linux"))]
 pub fn tsd_reader() -> Vec<u8> {
     let mut a = Asm { w: Vec::new(), flags: None };
     a.e(MRS_SLOT_BASE | IP0 as u32);

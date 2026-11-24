@@ -219,7 +219,7 @@ mod test_child {
 
     /// `run_alone` for a test whose regression is a hang: a child that has not ended `secs` after
     /// it started is ended, and the test fails saying so.
-    #[cfg(any(target_vendor = "apple", all(target_os = "linux", target_arch = "x86_64")))]
+    #[cfg(any(target_vendor = "apple", target_os = "linux"))]
     pub fn run_alone_within(module: &str, name: &str, secs: u64) -> bool {
         run_alone_as(module, name, None, Some(secs))
     }
@@ -510,15 +510,7 @@ pub fn print_as_rustc(sess: &std::sync::Arc<crate::Session>, args: &[String], in
         None => crate::cfg::CfgSet::machine(sess, &[]),
         Some(t) => {
             use crate::options::CheckTarget as C;
-            match C::from_triple(t).ok_or_else(|| format!("could not find specification for target \"{t}\""))? {
-                C::MacosArm64 => crate::cfg::CfgSet::macos_arm64(sess, &[]),
-                C::LinuxX64 => crate::cfg::CfgSet::linux_x64(sess, &[]),
-                C::WindowsX64 => crate::cfg::CfgSet::windows_x64(sess, &[]),
-                C::AndroidArm64 => crate::cfg::CfgSet::android_arm64(sess, &[]),
-                C::IosArm64 => crate::cfg::CfgSet::ios_arm64(sess, &[]),
-                C::Web(w) => crate::cfg::CfgSet::web(sess, w, &[]),
-                C::Host => unreachable!("from_triple names a target"),
-            }
+            crate::cfg::CfgSet::for_target(sess, C::from_triple(t).ok_or_else(|| format!("could not find specification for target \"{t}\""))?, &[])
         }
     };
     let triple = cs.triple();
@@ -535,7 +527,7 @@ pub fn print_as_rustc(sess: &std::sync::Arc<crate::Session>, args: &[String], in
     // split-debuginfo kinds, only_cdylib)
     let (dll_pre, dll_suf, exe_suf, st_pre, st_suf, split, only_cdylib): (&str, &str, &str, &str, &str, &[&str], bool) = match triple {
         "aarch64-apple-darwin" | "aarch64-apple-ios" => ("lib", ".dylib", "", "lib", ".a", &["off", "packed", "unpacked"], false),
-        "x86_64-unknown-linux-gnu" | "aarch64-linux-android" => ("lib", ".so", "", "lib", ".a", &["off", "packed", "unpacked"], false),
+        "x86_64-unknown-linux-gnu" | "aarch64-unknown-linux-gnu" | "aarch64-linux-android" => ("lib", ".so", "", "lib", ".a", &["off", "packed", "unpacked"], false),
         "x86_64-pc-windows-gnu" => ("", ".dll", ".exe", "lib", ".a", &["off"], false),
         "wasm32-unknown-unknown" | "wasm64-unknown-unknown" => ("", ".wasm", ".wasm", "lib", ".a", &["off"], true),
         t => return Err(format!("no target model for {t}")),

@@ -1614,7 +1614,7 @@ mod pause_imp {
         relax_session::reset_static(&HELD, relax_session::sync::Mutex::new(Vec::new()));
     }
     /// Holds the running threads now and keeps holding threads as they start running (every
-    /// 5 ms) until resume; blocked threads are never signalled.
+    /// 5 ms) until resume. Threads in retryable waits can be held too.
     pub fn pause(want: &'static (dyn Fn(&crate::inspect::threads::Thread) -> bool + Sync)) -> usize {
         let n = sweep(want);
         { let _k = crate::zone_alloc::kept();
@@ -1654,8 +1654,12 @@ mod pause_imp {
     /// mostly sleeps between short bursts (a 5 ms sweep rarely sees it running): SAFE2's
     /// "0 threads held" under `makepad run`, the program ran on.
     fn holdable(t: &crate::inspect::threads::Thread) -> bool {
-        // x86_64: nanosleep 35, futex 202, clock_nanosleep 230
-        t.state == "running" || (t.state == "waiting" && t.syscall.is_some_and(|s| matches!(s.0, 35 | 202 | 230)))
+        // Linux UAPI syscall numbers for nanosleep, futex and clock_nanosleep.
+        #[cfg(target_arch = "x86_64")]
+        const RETRYABLE_WAITS: [i64; 3] = [35, 202, 230];
+        #[cfg(target_arch = "aarch64")]
+        const RETRYABLE_WAITS: [i64; 3] = [101, 98, 115];
+        t.state == "running" || (t.state == "waiting" && t.syscall.is_some_and(|s| RETRYABLE_WAITS.contains(&s.0)))
     }
     pub fn resume() -> usize {
         let mut held = HELD.lock().unwrap_or_else(|e| e.into_inner());
@@ -1865,7 +1869,7 @@ mod name_tests {
     }
 }
 
-#[cfg(all(test, any(target_vendor = "apple", all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(test, any(target_vendor = "apple", target_os = "linux")))]
 mod pause_tests {
     use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
 

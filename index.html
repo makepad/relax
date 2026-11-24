@@ -556,7 +556,7 @@ footer .lang{vertical-align:middle;color:var(--muted)}
 <tr valign="top"><td><b>Speed of optimised code</b></td><td>1.00× (<code>--release</code>)</td><td><b>slower: 1.12× the time on x64, 1.24× on arm64</b> (geomean of 21 workloads)</td></tr>
 <tr valign="top"><td><b>Needs</b></td><td>rustc, LLVM, a linker</td><td><b>one Rust library</b>: 438k lines, 0 crates.io dependencies</td></tr>
 </table>
-<p>Code generation for x86-64 and AArch64; from a fresh clone the repository builds and its tests pass on Linux x86-64 and macOS arm64. Windows isn't tested.</p>
+<p>Relax generates x86-64 and AArch64 machine code. Release builds are supported on Linux x86-64, GNU/Linux AArch64 (<code>aarch64-unknown-linux-gnu</code>), and macOS arm64. Linux WebAssembly tests require Node with <code>memory64</code> enabled. Windows isn't tested.</p>
 <h2><a name="plain-the-tradeoffs">The tradeoffs</a></h2>
 <ul>
 <li><b>Slower optimised code.</b> Overall the code Relax runs is slower than rustc's <code>--release</code>: 1.12× the time on x64 and 1.24× on arm64 (geomean of 21 workloads), 1.22× and 1.25× against a native-CPU build. It is faster on only a few workloads: see <a href="#plain-where-llvm-still-wins">where LLVM still wins</a>.
@@ -1054,7 +1054,7 @@ const DATA = {
       "../relax/target/release/relax test hello           # run its #[test] fns",
       "../relax/target/release/relax check hello          # type- and borrow-check only"
     ].join("\n"),
-    after: "Run `relax` in the package's folder with the package's name, and keep the `relax` checkout where it is: its std is read from there. Building it took 53 s on a 16-core x86-64 Linux box; `hello` then started in 0.24 s, and under 0.1 s after that. Tested on Linux x86-64 and macOS arm64.",
+    after: "Run `relax` in the package's folder with the package's name, and keep the `relax` checkout where it is: its std is read from there. Building it took 53 s on a 16-core x86-64 Linux box; `hello` then started in 0.24 s, and under 0.1 s after that. Release builds are supported on Linux x86-64, GNU/Linux AArch64, and macOS arm64.",
     network: "A package without dependencies needs no network; crates.io dependencies come from `~/.cargo` or are downloaded and checked against the index's SHA-256. More in the [README](https://github.com/makepad/relax#readme)."
   },
 

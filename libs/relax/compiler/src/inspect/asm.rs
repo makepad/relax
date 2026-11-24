@@ -626,7 +626,7 @@ fn auto_native(build: bool) -> Result<String, String> {
 
 /// The native build to compare with (native=, the last one named, RELAX_INSPECT_NATIVE, else
 /// the package's own release build, started in the background when missing).
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub(crate) fn native_for(req: &Req) -> Result<String, String> {
     native_path(req)
 }

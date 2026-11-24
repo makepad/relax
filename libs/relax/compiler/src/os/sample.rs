@@ -109,6 +109,8 @@ mod imp {
 
 #[cfg(target_os = "linux")]
 mod imp {
+    use crate::os::mem::page_size;
+
     #[cfg(target_arch = "x86_64")]
     const SYS_GETTID: i64 = 186;
     #[cfg(target_arch = "x86_64")]
@@ -120,8 +122,12 @@ mod imp {
     const SYS_PERF_EVENT_OPEN: i64 = 241;
     use crate::jit::{sample_periods, SAMPLE_CALLERS, SAMPLE_MS};
     /// perf_event fd and its mapped sample ring (header page + RING_PAGES data pages)
-    pub type Handle = (i32, usize, std::cell::Cell<(u64, u64, usize)>);
-    const PAGE: usize = 4096;
+    pub struct Handle {
+        fd: i32,
+        base: usize,
+        page: usize,
+        cadence: std::cell::Cell<(u64, u64, usize)>,
+    }
     const RING_PAGES: usize = 8;
     extern "C" {
         fn syscall(n: i64, ...) -> i64;
@@ -151,19 +157,20 @@ mod imp {
             if fd < 0 {
                 return None;
             }
-            let len = (1 + RING_PAGES) * PAGE;
+            let page = page_size() as usize;
+            let len = (1 + RING_PAGES) * page;
             let p = mmap(std::ptr::null_mut(), len, 3, 1, fd, 0); // PROT_READ|WRITE, MAP_SHARED
             if p as isize == -1 {
                 close_fd(fd);
                 return None;
             }
-            Some((fd, p as usize, std::cell::Cell::new((0, 0, 0))))
+            Some(Handle { fd, base: p as usize, page, cadence: std::cell::Cell::new((0, 0, 0)) })
         }
     }
     pub fn close(h: Handle) {
         unsafe {
-            munmap(h.1 as *mut u8, (1 + RING_PAGES) * PAGE);
-            close_fd(h.0);
+            munmap(h.base as *mut u8, (1 + RING_PAGES) * h.page);
+            close_fd(h.fd);
         }
     }
     /// PERF_EVENT_IOC_PERIOD (_IOW('$', 4, u64)): the kernel samples every `ms` of the thread's
@@ -175,7 +182,7 @@ mod imp {
         }
         let ns: u64 = ms * 1_000_000;
         unsafe {
-            ioctl(h.0, 0x4008_2404, &ns as *const u64);
+            ioctl(h.fd, 0x4008_2404, &ns as *const u64);
         }
     }
     /// Diagnostic irregular sampling selects observations from a fixed-period
@@ -184,7 +191,7 @@ mod imp {
     fn exposure(h: &Handle, ns: u64) -> Option<u64> {
         let periods = sample_periods();
         if periods.len() == 1 { return Some(ns); }
-        let (mut phase, mut span, mut index) = h.2.get();
+        let (mut phase, mut span, mut index) = h.cadence.get();
         phase += ns;
         span += ns;
         let target = periods[index] * 1_000_000;
@@ -195,7 +202,7 @@ mod imp {
             span = 0;
             out
         } else { None };
-        h.2.set((phase, span, index));
+        h.cadence.set((phase, span, index));
         out
     }
     /// drains PERF_RECORD_SAMPLE records (header, ip) from the ring
@@ -203,12 +210,12 @@ mod imp {
     pub fn read(h: &Handle, out: &mut Vec<super::Sample>, selfs: &mut Vec<super::Sample>, lo: u64, hi: u64, _weight: u32) -> bool {
         use std::sync::atomic::{AtomicU64, Ordering};
         unsafe {
-            let base = h.1;
+            let base = h.base;
             let head = (*((base + 1024) as *const AtomicU64)).load(Ordering::Acquire);
             let tail_p = (base + 1032) as *const AtomicU64;
             let mut tail = (*tail_p).load(Ordering::Relaxed);
-            let data = base + PAGE;
-            let size = (RING_PAGES * PAGE) as u64;
+            let data = base + h.page;
+            let size = (RING_PAGES * h.page) as u64;
             let rd = |off: u64| -> u64 {
                 let mut b = [0u8; 8];
                 for k in 0..8u64 {
@@ -259,6 +266,43 @@ mod imp {
         }
         true
     }
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// A perf mapping starts its data one kernel page after the header. Read a sample
+        /// spanning the end of that data ring with each Linux AArch64 page size.
+        #[test]
+        fn wrapped_perf_samples_use_the_mapping_page_size() {
+            for page in [4096, 16384, 65536] {
+                let data_len = RING_PAGES * page;
+                let mut mapping = vec![0u64; (page + data_len) / 8];
+                let tail = data_len - 8;
+                let head = tail + 24;
+                mapping[1024 / 8] = head as u64;
+                mapping[1032 / 8] = tail as u64;
+                mapping[(page + tail) / 8] = (24 << 48) | 9; // PERF_RECORD_SAMPLE
+                mapping[page / 8] = 0x1234; // ip
+                mapping[page / 8 + 1] = sample_periods().iter().copied().max().unwrap() * 1_000_000;
+                let ring = Handle {
+                    fd: -1,
+                    base: mapping.as_mut_ptr() as usize,
+                    page,
+                    cadence: std::cell::Cell::new((0, 0, 0)),
+                };
+                let mut samples = Vec::with_capacity(1);
+                let mut self_samples = Vec::with_capacity(1);
+                read(&ring, &mut samples, &mut self_samples, 0x1000, 0x2000, 1);
+
+                assert_eq!(samples.len(), 1, "page size {page}");
+                assert_eq!(samples[0].pc, 0x1234);
+                assert_eq!(self_samples.len(), 1);
+                assert_eq!(self_samples[0].pc, 0x1234);
+                assert_eq!(mapping[1032 / 8], head as u64);
+            }
+        }
+    }
+
 }
 
 /// Windows: the sampler suspends the thread (SuspendThread; GetThreadContext completes the

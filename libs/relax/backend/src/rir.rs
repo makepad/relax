@@ -857,7 +857,7 @@ pub enum Reloc {
     /// code (a direct branch the runtime keeps in step with the table word)
     Call(u32),
     /// the thread-local block key / cell offset (`Env::tls_key`, pre-scaled as the backend loads it;
-    /// x64 Windows: `x64::win_tls_key`; Linux under Relax also has a two-load key, `x64::TLS_TWO_LOAD`)
+    /// x64 Windows: `x64::win_tls_key`; Linux under Relax also has a two-load key)
     TlsKey,
     /// `Env::tls_slow`
     TlsSlow,
@@ -1091,8 +1091,8 @@ pub enum Inst {
     /// d = address of this thread's copy of the thread-local block at the offset a symbol holds
     TlsAddr(VReg, Sym),
     /// d = the thread pointer + the symbol's value: a variable in the executable's static TLS
-    /// (x86-64 Linux: fs:0 + offset, rustc's local-exec model). Pure within a thread, like TlsAddr
-    /// never moved (a coroutine may resume on another thread).
+    /// (Linux: fs:[0] on x86-64, tpidr_el0 on AArch64, as in rustc's local-exec model).
+    /// Pure within a thread, like TlsAddr never moved (a coroutine may resume on another thread).
     TlsStatic(VReg, Sym),
     // ---- 128-bit vectors (Cls::V128; four 32-bit lanes)
     /// d = bitwise m ? a : b (m: lane masks)

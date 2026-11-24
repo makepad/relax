@@ -574,10 +574,32 @@ mod imp {
         }
     }
 
+    /// glibc sys/ucontext.h and Linux's sigcontext.h give the byte offset of mcontext
+    /// and the word indices of registers in it. AArch64 mcontext starts with fault_address.
+    struct ContextLayout {
+        mcontext: usize,
+        pc: usize,
+        sp: usize,
+        fp: usize,
+        lr: Option<usize>,
+        a0: usize,
+        a1: usize,
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    const CONTEXT: ContextLayout = ContextLayout {
+        mcontext: 40, pc: 16, sp: 15, fp: 10, lr: None, a0: 8, a1: 9,
+    };
+    #[cfg(target_arch = "aarch64")]
+    const CONTEXT: ContextLayout = ContextLayout {
+        mcontext: 176, pc: 33, sp: 32, fp: 30, lr: Some(31), a0: 1, a1: 2,
+    };
+
     /// The interrupted context's (pc, sp, fp, lr) (`uc`: a handler's third argument).
     pub(crate) unsafe fn regs(uc: *mut u8) -> (u64, u64, u64, u64) {
-        let gregs = uc.add(40) as *const u64;
-        (*gregs.add(16), *gregs.add(15), *gregs.add(10), 0)
+        let gregs = uc.add(CONTEXT.mcontext).cast::<u64>();
+        let reg = |i| *gregs.add(i);
+        (reg(CONTEXT.pc), reg(CONTEXT.sp), reg(CONTEXT.fp), CONTEXT.lr.map_or(0, reg))
     }
 
     /// The fault's data address (`info`: a handler's second argument; 0 without one).
@@ -627,12 +649,12 @@ mod imp {
             let _errno = crate::os::progsig::KeepErrno::new();
             // the handler allocates: in the system heap, never in the faulting thread's arena (the fault may be inside its allocator)
             let _kept = crate::zone_alloc::kept();
-            let gregs = uc.add(40) as *mut u64;
+            let (pc, sp, fp, lr) = regs(uc);
             if sig == SIGABRT {
-                super::note_abort(*gregs.add(16), *gregs.add(10));
+                super::note_abort(pc, fp);
                 let handled = super::program_abort(sig, info, uc);
                 if !crate::os::progsig::take_sent_on_abort() {
-                    report_abort(*gregs.add(16), *gregs.add(10));
+                    report_abort(pc, fp);
                 }
                 if handled {
                     return;
@@ -647,11 +669,10 @@ mod imp {
             }
             // RELAX_COMPILE_WATCH: the watcher asks a thread stuck in one step where it is
             if sig == watchdog_signal() && crate::jit::WATCH_DUMP.load(std::sync::atomic::Ordering::Relaxed) {
-                let (pc, fp) = (*gregs.add(16), *gregs.add(10));
                 eprintln!("relax watch: stuck thread {:#x} at pc {:#x} ({}) fp {:#x}", crate::os::thread::current(), pc, crate::jit::fn_name_at(pc), fp);
                 return;
             }
-            let f = Fault { kind: kind(sig), sig, pc: *gregs.add(16), sp: *gregs.add(15), fp: *gregs.add(10), addr: *(info.add(16) as *const u64), lr: 0 };
+            let f = Fault { kind: kind(sig), sig, pc, sp, fp, addr: fault_addr(info), lr };
             let chained = CHAINED[sig as usize][0].load(Ordering::SeqCst) > 1;
             match crate::jit::on_fault(&f, &Hooks { prepare: &|| {}, chained, debug: &|| {} }) {
                 Action::Ignore | Action::Retry => {}
@@ -662,9 +683,10 @@ mod imp {
                 }
                 Action::Die => default_action(sig),
                 Action::Resume { pc, a0, a1 } => {
-                    *gregs.add(16) = pc;
-                    *gregs.add(8) = a0;
-                    *gregs.add(9) = a1;
+                    let gregs = uc.add(CONTEXT.mcontext).cast::<u64>();
+                    *gregs.add(CONTEXT.pc) = pc;
+                    *gregs.add(CONTEXT.a0) = a0;
+                    *gregs.add(CONTEXT.a1) = a1;
                 }
             }
         }

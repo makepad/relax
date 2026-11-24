@@ -187,6 +187,30 @@ pub extern "C" fn relax_tool_release(h: u64) {
 
 #[cfg(test)]
 mod tests {
+    /// Cargo and build scripts see the same GNU/Linux AArch64 cfgs and output names from
+    /// an explicit target probe and a native probe on that host.
+    #[test]
+    fn rustc_probes_use_the_linux_arm64_target_model() {
+        let sess = std::sync::Arc::new(crate::Session::default());
+        let args = [
+            "--target", "aarch64-unknown-linux-gnu", "--print", "cfg", "--print", "file-names",
+            "--crate-name", "probe", "--crate-type", "bin,cdylib,staticlib", "-",
+        ].map(str::to_owned);
+        let answer = crate::print_as_rustc(&sess, &args, b"").unwrap();
+        let mut lines = answer.lines();
+        let cfg: Vec<_> = lines.by_ref().take_while(|line| *line != "probe").collect();
+        for expected in [
+            r#"target_arch="aarch64""#, r#"target_os="linux""#, r#"target_env="gnu""#,
+            r#"target_feature="neon""#, r#"target_has_atomic="128""#,
+        ] {
+            assert!(cfg.contains(&expected), "missing {expected} in {answer}");
+        }
+        assert_eq!(lines.collect::<Vec<_>>(), ["libprobe.so", "libprobe.a"]);
+
+        #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+        assert_eq!(crate::print_as_rustc(&sess, &args[2..], b"").unwrap(), answer);
+    }
+
     /// A build script's question carries rustc's words only: Relax's own words among them
     /// (`--no-asm`, the grants of options.rs GRANTS) change nothing of the run that answers, and
     /// one that is no grant does not end it (a parsed `--allow-nonsense` exits 2). And no answer

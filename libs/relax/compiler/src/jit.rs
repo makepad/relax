@@ -1234,12 +1234,12 @@ fn tls_block_alloc(size: u32, align: u32) -> u32 {
     at
 }
 
-/// `__relax_tls_cell` (os/tls.rs, Linux x86-64): a runtime this process runs under Relax, at
+/// `__relax_tls_cell` (os/tls.rs, Linux): a runtime this process runs under Relax, at
 /// any depth, keeps its thread's block pointer in a word of the outermost runtime's (this
 /// native one's) thread-local block, which the JIT code it compiles reads with two loads
-/// (relax_backend x64::TLS_TWO_LOAD). `key` 0: a new word, returned as its key (os::tls::cell_key);
+/// (the backend's TLS_TWO_LOAD sequence). `key` 0: a new word, returned as its key (os::tls::cell_key);
 /// else the address of word `key` on the calling thread (its block made when it has none). A
-/// runtime itself under Relax forwards both to the runtime that runs it. 0 off Linux x86-64.
+/// runtime itself under Relax forwards both to the runtime that runs it. 0 off Linux.
 pub extern "C" fn relax_tls_cell(key: u64) -> u64 {
     #[cfg(relax)]
     {
@@ -1248,14 +1248,14 @@ pub extern "C" fn relax_tls_cell(key: u64) -> u64 {
         }
         unsafe { __relax_tls_cell(key) }
     }
-    #[cfg(all(not(relax), target_os = "linux", target_arch = "x86_64"))]
+    #[cfg(all(not(relax), target_os = "linux"))]
     {
         if key == 0 {
             return os::tls::cell_key(tls_block_alloc(8, 8));
         }
         tls_block() + key as u32 as u64
     }
-    #[cfg(all(not(relax), not(all(target_os = "linux", target_arch = "x86_64"))))]
+    #[cfg(all(not(relax), not(target_os = "linux")))]
     {
         let _ = key;
         0

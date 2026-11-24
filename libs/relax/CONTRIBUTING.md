@@ -44,8 +44,20 @@ cargo test --release --workspace                                  # everything
 cargo test --release -p relax-front -p relax-base -p relax-compiler  # the quicker core
 ```
 
-These should be clean on Linux x86-64 and macOS arm64. Send a failure you didn't cause as a
+Release builds are supported on Linux x86-64, GNU/Linux AArch64 (`aarch64-unknown-linux-gnu`),
+and macOS arm64. The WebAssembly integration tests on Linux invoke `node` from `PATH` and
+require `memory64`. Node 24 enables it by default. Node 20 needs
+`--experimental-wasm-memory64` on its command line. Send a failure you didn't cause as a
 separate fix.
+
+On AArch64 Linux, stack walks use frame records. A walk can stop at libc when a blocked
+thread's syscall snapshot gives only its program counter and stack pointer. AArch64 Linux
+`prof` samples CPU time. Live `vsnative` requires matching `perf_event` sampling for the JIT
+and native process, which is available on x86-64 Linux. AArch64 Linux supports
+`vsnative file=<raw>` with a saved `prof raw=` profile.
+
+Native AArch64 validation used a kernel with 4 KiB pages. The perf-ring reader test exercises
+4 KiB, 16 KiB, and 64 KiB mapping layouts.
 
 ## Add a test
 

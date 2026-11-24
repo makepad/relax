@@ -32,7 +32,7 @@ pub fn viewing() -> bool {
 }
 
 /// One marker record, 32 bytes: `tk` = time (clock::wall_ns, < 2^60) | kind << 60; `label` = a
-/// static string's pointer (47 bits) | its length << 48; `a`, `b` per kind (a wait's detail
+/// static string's pointer (48 bits) | its length << 48; `a`, `b` per kind (a wait's detail
 /// string packed like `label`; an owner service's request site: a `Location` pointer | SITE).
 #[derive(Clone, Copy)]
 pub(super) struct Rec {
@@ -55,18 +55,11 @@ impl Rec {
 }
 
 pub(crate) fn pack_str(s: &'static str) -> u64 {
-    if s.is_empty() {
-        return 0;
-    }
-    (s.as_ptr() as u64 & ((1 << 47) - 1)) | ((s.len().min(0x7fff) as u64) << 48)
+    super::activity::pack_with_limit(s, 0x7fff)
 }
 
 pub(crate) fn unpack_str(w: u64) -> &'static str {
-    let (p, n) = (w & ((1 << 47) - 1), ((w >> 48) & 0x7fff) as usize);
-    if p == 0 || n == 0 {
-        return "";
-    }
-    unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(p as *const u8, n)) }
+    super::activity::unpack(w & !SITE)
 }
 
 /// Ring sizes (records of 32 bytes): every thread starts small; one that wraps its ring within

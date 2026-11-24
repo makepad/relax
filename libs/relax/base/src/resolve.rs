@@ -2772,15 +2772,7 @@ pub fn cargo_metadata(sess: &std::sync::Arc<crate::Session>, dir: &str, flags: &
     r.allow_c = true;
     if let Some(t) = &platform {
         use crate::options::CheckTarget as C;
-        r.cfg = match C::from_triple(t).ok_or_else(|| format!("metadata: unsupported --filter-platform {t:?}"))? {
-            C::MacosArm64 => crate::cfg::CfgSet::macos_arm64(sess, &[]),
-            C::LinuxX64 => crate::cfg::CfgSet::linux_x64(sess, &[]),
-            C::WindowsX64 => crate::cfg::CfgSet::windows_x64(sess, &[]),
-            C::AndroidArm64 => crate::cfg::CfgSet::android_arm64(sess, &[]),
-            C::IosArm64 => crate::cfg::CfgSet::ios_arm64(sess, &[]),
-            C::Web(w) => crate::cfg::CfgSet::web(sess, w, &[]),
-            C::Host => unreachable!("from_triple names a target"),
-        };
+        r.cfg = crate::cfg::CfgSet::for_target(sess, C::from_triple(t).ok_or_else(|| format!("metadata: unsupported --filter-platform {t:?}"))?, &[]);
     }
     let root = if current.contains_key("package") { Some(r.load(&start, Source::Path)?) } else { None };
     // As in Workspace::has_member, membership follows every in-workspace path dependency,

@@ -20,7 +20,7 @@ Relax is slaved to the `work` branch of [makepad/makepad](https://github.com/mak
   or run. Reproduce a report with code written in makepad, using std and the workspace's own crates
   only. Review a pull request from its own diff.
 - **Files that live only here.** `README.md`, `LICENSE`, `Cargo.toml`, `AGENTS.md`, `.gitignore`,
-  `.nojekyll` and the website (`index.html`, `zh/`, `retro/`, `favicon.*`, `apple-touch-icon.png`)
+  `.nojekyll` and the website (`index.html`, `light/`, `zh/`, `retro/`, `favicon.*`, `apple-touch-icon.png`)
   are kept in this repository.
 
 ## Carried paths
@@ -53,8 +53,9 @@ carry it in the same commit.
 
 ## Building and testing
 
-See `README.md` ("Try it") and `libs/relax/CONTRIBUTING.md`. From a fresh clone the repository builds
-and its tests pass on Linux x86-64 and macOS arm64.
+See `README.md` ("Try it") and `libs/relax/CONTRIBUTING.md`. Release builds are supported on
+Linux x86-64, GNU/Linux AArch64 (`aarch64-unknown-linux-gnu`), and macOS arm64. Linux WebAssembly
+tests require Node with `memory64` enabled.
 
 ## Naming Rust
 

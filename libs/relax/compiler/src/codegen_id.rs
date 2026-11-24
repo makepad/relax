@@ -77,8 +77,8 @@ pub fn id() -> u128 {
         let mut h = Sip128::new();
         h.str("relax-codegen-id");
         h.str(&compiled_by());
-        // a runtime Relax compiled emits another thread-local block fetch than a native one of the
-        // same source (relax_backend x64::TLS_TWO_LOAD): their stored code never mixes
+        // Linux runtimes built under Relax use two TLS loads. Native builds of the same source
+        // use one load, so their stored code has a different identity.
         h.u8(cfg!(relax) as u8);
         for (name, stamp) in CODEGEN_PARTS {
             h.str(name);

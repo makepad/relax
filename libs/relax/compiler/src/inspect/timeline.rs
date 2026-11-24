@@ -382,7 +382,7 @@ static HITCHES: AtomicU64 = AtomicU64::new(0);
 /// Turns of the UI thread's event loop that drew nothing (woken by a timer, a task, a signal and
 /// no Draw ran) while frame markers are on (`Turns`), of them the ones a Draw took in after
 /// (`QUIET_TAKEN`), and what woke the last `QUIET_RING` (each turn's first phase, a static str
-/// packed as `detail` reads it; 0 once taken in): `why-slow`'s count of wakes beside the frames
+/// packed by `activity::pack`; 0 once taken in): `why-slow`'s count of wakes beside the frames
 /// that drew (`FRAMES`). A frame may take in wakes from before a reader's mark (`QUIET_CUT`, the
 /// latest mark): `QUIET_TAKEN_CUT` counts those, so a window counts its own wakes only.
 pub static QUIET: AtomicU64 = AtomicU64::new(0);
@@ -394,7 +394,7 @@ static QUIET_WOKE: [AtomicU64; QUIET_RING] = [const { AtomicU64::new(0) }; QUIET
 
 fn quiet_wake(woke: &'static str) {
     let n = QUIET.load(Relaxed) as usize;
-    QUIET_WOKE[n % QUIET_RING].store((woke.as_ptr() as u64 & ((1 << 47) - 1)) | ((woke.len().min(u16::MAX as usize) as u64) << 48), Release);
+    QUIET_WOKE[n % QUIET_RING].store(super::activity::pack(woke), Release);
     QUIET.store(n as u64 + 1, Release);
 }
 
@@ -435,7 +435,7 @@ pub fn ui_wakes_since(mark: [u64; 4]) -> Option<(u64, u64, Vec<(&'static str, us
     // the wakes seen since the mark that no frame took in
     let taken = taken1.saturating_sub(taken0).saturating_sub(cut1.saturating_sub(cut0));
     let first = seen0.max(seen1.saturating_sub(QUIET_RING as u64));
-    let woke = tally((first..seen1).map(|i| QUIET_WOKE[i as usize % QUIET_RING].load(Acquire)).filter(|&w| w != 0).map(detail));
+    let woke = tally((first..seen1).map(|i| QUIET_WOKE[i as usize % QUIET_RING].load(Acquire)).filter(|&w| w != 0).map(super::activity::unpack));
     Some((frames1.saturating_sub(frames0), seen1.saturating_sub(seen0).saturating_sub(taken), woke))
 }
 static HITCH_SKIPPED: AtomicU64 = AtomicU64::new(0);
@@ -890,19 +890,10 @@ fn wait_trace(begin: bool, kind: &'static str, detail: &'static str, object: u64
         return;
     }
     if begin {
-        // the detail string travels packed in `b`: pointer (47 bits) and length (16 bits)
-        push(Kind::WaitBegin, kind, object, (detail.as_ptr() as u64 & ((1 << 47) - 1)) | ((detail.len().min(0xffff) as u64) << 48));
+        push(Kind::WaitBegin, kind, object, super::activity::pack(detail));
     } else {
         push(Kind::WaitEnd, "", 0, 0);
     }
-}
-
-fn detail(b: u64) -> &'static str {
-    let (p, n) = (b & ((1 << 47) - 1), (b >> 48) as usize);
-    if p == 0 || n == 0 {
-        return "";
-    }
-    unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(p as *const u8, n)) }
 }
 
 // ---- the GPU lane: spans the platform reports when its command buffers complete (Metal:
@@ -1037,7 +1028,7 @@ fn build(recs: Vec<(u64, u64, Vec<Rec>)>, stop: u64) -> Vec<Thread> {
         for r in &v {
             match r.kind {
                 1 => stack.push((r.t, label(r).to_string(), false, 0, 0)),
-                3 => stack.push((r.t, format!("wait: {} {}", label(r), detail(r.b)).trim_end().to_string(), true, r.a, r.b)),
+                3 => stack.push((r.t, format!("wait: {} {}", label(r), super::activity::unpack(r.b)).trim_end().to_string(), true, r.a, r.b)),
                 2 | 4 => {
                     // the innermost open record of the same kind
                     let want_wait = r.kind == 4;
@@ -1650,7 +1641,7 @@ fn save_cmd(out: &mut Out) {
         // the idle markers are the rings' own (the recording's span kinds stop at Served)
         for r in v.iter().filter(|r| r.kind <= Kind::Served as u8) {
             let name = if r.kind == Kind::WaitBegin as u8 {
-                let d = detail(r.b);
+                let d = super::activity::unpack(r.b);
                 strings.id(&if d.is_empty() { label(r).to_string() } else { format!("{} {}", label(r), d) })
             } else {
                 strings.id(label(r))
@@ -1740,7 +1731,7 @@ mod tests {
     }
 
     fn rec(t: u64, kind: super::Kind, label: &'static str, a: u64, detail: &'static str) -> super::Rec {
-        let b = if detail.is_empty() { 0 } else { (detail.as_ptr() as u64 & ((1 << 47) - 1)) | ((detail.len() as u64) << 48) };
+        let b = super::super::activity::pack(detail);
         super::Rec { t, kind: kind as u8, label_len: label.len() as u16, label: label.as_ptr() as u64, a, b }
     }
 

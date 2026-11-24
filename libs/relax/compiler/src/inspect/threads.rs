@@ -9,10 +9,12 @@
 //!   is allocated or locked meanwhile (it may hold malloc's or the loader's lock): pcs go to a
 //!   fixed array, names are looked up after it runs again.
 //!
-//! The walk: JIT code keeps frame pointers (every target); host code on macOS arm64 too (the
-//! platform ABI) and on Android arm64 (frame records); host code on Linux x86_64 is stepped by
-//! its DWARF CFI (cfi.rs), on Windows x64 by its PE unwind info (pe_unwind.rs). A program
-//! thread's walk crosses the switch to its program stack (relax_base::stack::switch_return_pc).
+//! JIT code keeps frame records on every target. On AArch64 the walk also uses host frame
+//! records where available (Linux, Android and the macOS ABI). Linux x86-64 host code uses
+//! DWARF CFI (cfi.rs) and Windows x64 uses PE unwind info (pe_unwind.rs). On AArch64 Linux a
+//! syscall snapshot gives the pc and sp but no frame or link register, so a blocked thread
+//! without saved registers stops at the syscall. A program thread's walk crosses the switch
+//! to its program stack (relax_base::stack::switch_return_pc).
 //! Every memory read goes through a call that fails instead of faulting.
 
 /// Most frames kept per stack.
@@ -167,7 +169,9 @@ pub fn capture(t: &Thread, raw: &mut Raw) -> Result<(), &'static str> {
     r
 }
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-pub use imp::{stack_hi_of_self, walk_regs_with, Slot as HoldSlot};
+pub use imp::{stack_hi_of_self, walk_regs_with};
+#[cfg(target_os = "linux")]
+pub use imp::Slot as HoldSlot;
 
 /// The calling thread's own stack, every frame of it (host and JIT code, innermost first):
 /// return addresses, the first one into this fn's caller. std::backtrace's capture
@@ -245,7 +249,7 @@ pub fn capture_self(out: &mut Vec<u64>) {
 }
 
 /// Pause: holds thread `tid` in its handler until `release_hold` (Linux).
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 pub fn hold_paused(tid: u64) -> Result<&'static HoldSlot, &'static str> {
     imp::hold(tid, imp::HOLD_PAUSE)
 }
@@ -253,31 +257,31 @@ pub fn hold_paused(tid: u64) -> Result<&'static HoldSlot, &'static str> {
 /// Holds thread `tid` in its handler for good (a thread with a frame in code that never runs
 /// again: stale.rs `park_held`); a blocked thread is signalled too (it leaves the handler only at
 /// the run's end, `release_held_for_good`, when no code of the run runs any more). Linux.
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 pub fn hold_for_good(tid: u64) -> Result<&'static HoldSlot, &'static str> {
     imp::hold(tid, imp::HOLD_FOREVER)
 }
 
 /// A pause's hold of a thread becomes a hold for good (no resume releases it: the run's end does).
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 pub fn keep_held(s: &HoldSlot) {
     imp::keep(s)
 }
 
 /// The run's end, once its code is gone: every thread held for good leaves its handler (it faults
 /// out of that code at its next instruction there). Returns how many. Linux.
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 pub fn release_held_for_good() -> usize {
     imp::release_forever()
 }
 
 /// Whether thread `tid` stands still in its handler now (held by a pause or for good). Linux.
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 pub fn is_held(tid: u64) -> bool {
     imp::held(tid).is_some()
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 pub fn release_hold(s: &HoldSlot) {
     imp::release(s)
 }
@@ -664,8 +668,10 @@ mod imp {
     /// descriptor. None when the layout is not the expected one.
     pub fn tid_of_handle(h: u64) -> Option<u64> {
         static OFF: std::sync::OnceLock<Option<u64>> = std::sync::OnceLock::new();
-        #[cfg(not(target_os = "android"))]
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         const OFFSETS: [u64; 4] = [0x2d0, 0x2d0 + 8, 0x2c0, 0x2e0];
+        #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+        const OFFSETS: [u64; 1] = [0xd0];
         #[cfg(target_os = "android")]
         const OFFSETS: [u64; 1] = [16];
         let off = (*OFF.get_or_init(|| {
@@ -793,8 +799,8 @@ mod imp {
     static HOLDS: [Slot; SLOTS] = [const { Slot { state: AtomicU32::new(0), tid: AtomicI32::new(0), regs: [const { AtomicU64::new(0) }; 9], mode: AtomicU32::new(0) } }; SLOTS];
     pub const HOLD_CAPTURE: u32 = 0;
     pub const HOLD_PAUSE: u32 = 1;
-    // a hold for good: Linux x86_64 only (`hold_for_good`, `keep_held`)
-    #[cfg(target_arch = "x86_64")]
+    // a hold for good: Linux only (`hold_for_good`, `keep_held`)
+    #[cfg(target_os = "linux")]
     pub const HOLD_FOREVER: u32 = 2;
     static SIGNAL: AtomicI32 = AtomicI32::new(0);
 
@@ -833,11 +839,9 @@ mod imp {
             }
             #[cfg(target_arch = "aarch64")]
             {
-                // uc_mcontext at 176 (flags, link, stack, 128-byte sigmask): fault_address,
-                // x0..x30, sp, pc
-                let mc = uc.add(176) as *const u64;
-                for (k, g) in [33usize, 32, 30, 31].iter().enumerate() {
-                    slot.regs[k].store(*mc.add(*g), Relaxed);
+                let (pc, sp, fp, lr) = crate::os::fault::regs(uc);
+                for (slot_reg, reg) in slot.regs.iter().zip([pc, sp, fp, lr]) {
+                    slot_reg.store(reg, Relaxed);
                 }
             }
             slot.regs[8].store(pthread_self() as u64, Relaxed);
@@ -923,13 +927,13 @@ mod imp {
     }
 
     /// A held thread stays held for good.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(target_os = "linux")]
     pub fn keep(slot: &Slot) {
         slot.mode.store(HOLD_FOREVER, Relaxed);
     }
 
     /// Lets every thread held for good go (`release_held_for_good`).
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(target_os = "linux")]
     pub fn release_forever() -> usize {
         let mut n = 0;
         for slot in HOLDS.iter().filter(|h| h.mode.load(Relaxed) == HOLD_FOREVER && h.state.load(Acquire) == 2) {
@@ -1275,9 +1279,9 @@ mod x64_walk {
     }
 }
 
-/// Android arm64: JIT code and host code both keep frame records (x29 = fp: [fp] = the caller's
-/// fp, [fp+8] = the return address); a frame is kept while its return address is code.
-#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+/// Linux and Android AArch64 walk the available frame records. A frame at x29 contains
+/// the caller's frame pointer and a return address, which must point into executable code.
+#[cfg(all(any(target_os = "linux", target_os = "android"), target_arch = "aarch64"))]
 mod arm64_walk {
     use super::{Raw, MAX_FRAMES};
 
@@ -1495,6 +1499,70 @@ mod imp {
     pub fn each_thread(_f: impl FnMut(u64, &dyn Fn() -> String, &dyn Fn() -> Option<u64>)) {}
     pub fn capture(_t: &Thread, _raw: &mut Raw) -> Result<(), &'static str> {
         Err("stack capture is not implemented on this target")
+    }
+}
+
+#[cfg(all(test, target_os = "linux", target_arch = "aarch64"))]
+mod arm64_tests {
+    use super::{capture, hold_paused, imp::BLOCKED_NO_FP, list, release_hold, self_os_id, Raw};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::{Duration, Instant};
+
+    /// A syscall snapshot lacks x29 and x30. A held thread supplies its interrupted registers
+    /// instead, and releasing the hold lets the thread finish.
+    #[test]
+    fn a_parked_thread_supplies_its_registers_when_held() {
+        if !crate::test_child::run_alone_within(module_path!(), "a_parked_thread_supplies_its_registers_when_held", 10) {
+            return;
+        }
+        let done = std::sync::Arc::new(AtomicBool::new(false));
+        let (send, recv) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn({
+            let done = done.clone();
+            move || {
+                send.send(self_os_id()).unwrap();
+                while !done.load(Ordering::Acquire) {
+                    std::thread::park();
+                }
+            }
+        });
+        let tid = recv.recv().unwrap();
+        let start = Instant::now();
+        let blocked = loop {
+            if let Some(thread) = list().into_iter().find(|t| t.os_id == tid && t.state == "waiting" && t.syscall.is_some()) {
+                break Some(thread);
+            }
+            if start.elapsed() >= Duration::from_secs(2) {
+                break None;
+            }
+            std::thread::yield_now();
+        };
+        let mut syscall = Raw::new();
+        let mut interrupted = Raw::new();
+        let captures = blocked.as_ref().map(|thread| {
+            let first = capture(thread, &mut syscall);
+            let second = hold_paused(tid).and_then(|slot| {
+                let result = capture(thread, &mut interrupted);
+                release_hold(slot);
+                result
+            });
+            (first, second)
+        });
+        done.store(true, Ordering::Release);
+        worker.thread().unpark();
+        worker.join().unwrap();
+
+        let (first, second) = captures.expect("the worker blocked in a syscall");
+        first.unwrap();
+        assert_eq!(syscall.stop, Some(BLOCKED_NO_FP));
+        assert_eq!(syscall.n, 1);
+        assert_eq!(syscall.lr, 0);
+        second.unwrap();
+        assert_ne!(interrupted.stop, Some(BLOCKED_NO_FP));
+        assert_ne!(interrupted.handle, 0);
+        assert_ne!(interrupted.lr, 0);
+        assert_ne!(interrupted.sp, 0);
+        assert_ne!(interrupted.frames()[0], 0);
     }
 }
 

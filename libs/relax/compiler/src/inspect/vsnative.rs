@@ -8,8 +8,10 @@
 //!
 //! Per second of wall is the right unit for work at a fixed pace (playback, a frame-locked app,
 //! a replayed input recording); two flat-out loops are compared by their shares (the `%` columns).
-//! Linux only: macOS lets a process sample another one only with privileges. There (and anywhere)
-//! `vsnative file=<raw>` compares against the native app's own samples (its `prof raw=<file>`).
+//! Live comparison needs matching perf_event samples from both processes. The JIT's perf
+//! sampler is x86-64 Linux only. AArch64 Linux `prof` uses CPU-time stack captures, and
+//! macOS requires privileges to sample another process. `vsnative file=<raw>` compares
+//! against the native app's own samples (its `prof raw=<file>`) on those hosts.
 
 use super::{Out, Req};
 
@@ -21,7 +23,7 @@ pub fn cmd_vsnative(req: &Req, out: &mut Out) {
     imp::run(req, out);
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod imp {
     use super::{Out, Req};
     use crate::inspect::short;
@@ -33,10 +35,7 @@ mod imp {
         fn munmap(a: *mut u8, len: usize) -> i32;
         fn close(fd: i32) -> i32;
     }
-    #[cfg(target_arch = "x86_64")]
     const SYS_PERF_EVENT_OPEN: i64 = 298;
-    #[cfg(target_arch = "aarch64")]
-    const SYS_PERF_EVENT_OPEN: i64 = 241;
     const PAGE: usize = 4096;
     const RING_PAGES: usize = 64;
 
@@ -152,10 +151,7 @@ mod imp {
 
     pub fn run(req: &Req, out: &mut Out) {
         if let Some(pid) = req.get("pid") {
-            #[cfg(target_arch = "x86_64")]
             return super::stacks::run(req, out, pid);
-            #[cfg(not(target_arch = "x86_64"))]
-            return out.err(&format!("vsnative pid={}: another process's stacks are walked on x86_64 Linux only", pid));
         }
         let secs = req.get("s").and_then(|v| v.parse::<f64>().ok()).unwrap_or(5.0).clamp(0.5, 60.0);
         let warm = req.num("warm_ms", 3000).min(120_000);
@@ -791,10 +787,15 @@ mod stacks {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
 mod imp {
     use super::{Out, Req};
     pub fn run(_req: &Req, out: &mut Out) {
-        out.err("vsnative samples a second process: Linux only (macOS allows that only with privileges); on macOS give it the native app's own samples (`vsnative file=<the native app's prof raw= file>`), or compare statically with `asm top vs=rustc`");
+        let reason = if cfg!(target_vendor = "apple") {
+            "sampling another process requires privileges on macOS"
+        } else {
+            "live vsnative requires matching perf_event samples, available on x86-64 Linux"
+        };
+        out.err(&format!("{reason}. Use `vsnative file=<the native app's prof raw= file>` or compare statically with `asm top vs=rustc`"));
     }
 }

@@ -15,24 +15,33 @@ impl CfgSet {
     /// The target the program is read for: the machine Relax runs on (JIT target), or
     /// RELAX_CHECK_TARGET's.
     pub fn host(sess: &std::sync::Arc<crate::Session>, features: &[String]) -> CfgSet {
-        // RELAX_CHECK_TARGET=x86_64-pc-windows-gnu: type-check (`makepad check` / `makepad run
-        // --check`, with cargo's `--target` of the same triple) another platform's code from here
-        // and RELAX_CHECK_TARGET=aarch64-apple-darwin / x86_64-unknown-linux-gnu (`makepad host-gen`
-        // reads the provided crates as each target sees them)
-        let mut cs = match sess.options.check_target {
-            crate::options::CheckTarget::WindowsX64 => CfgSet::windows_x64(sess, features),
-            crate::options::CheckTarget::MacosArm64 => CfgSet::macos_arm64(sess, features),
-            crate::options::CheckTarget::LinuxX64 => CfgSet::linux_x64(sess, features),
-            crate::options::CheckTarget::AndroidArm64 => CfgSet::android_arm64(sess, features),
-            crate::options::CheckTarget::IosArm64 => CfgSet::ios_arm64(sess, features),
-            crate::options::CheckTarget::Web(w) => CfgSet::web(sess, w, features),
-            // machine() adds the extra cfgs itself
-            crate::options::CheckTarget::Host => return CfgSet::machine(sess, features),
-        };
+        // RELAX_CHECK_TARGET makes `makepad check` / `makepad run --check` read code the
+        // way cargo does with the same `--target`. `makepad host-gen` also uses it to read
+        // the provided crates as each target sees them, e.g. aarch64-apple-darwin,
+        // x86_64-unknown-linux-gnu or aarch64-unknown-linux-gnu.
+        let target = sess.options.check_target;
+        if target == crate::options::CheckTarget::Host {
+            return CfgSet::machine(sess, features);
+        }
+        let mut cs = CfgSet::for_target(sess, target, features);
         // cargo with `--target` applies RUSTFLAGS to the target's artifacts only, not to the
         // proc-macro world (machine()), which Relax builds for here
         cs.set.extend(sess.options.cfgs.iter().cloned());
         cs
+    }
+
+    /// The built-in cfg values of an explicit target, before adding user flags.
+    pub fn for_target(sess: &std::sync::Arc<crate::Session>, target: crate::options::CheckTarget, features: &[String]) -> CfgSet {
+        match target {
+            crate::options::CheckTarget::WindowsX64 => CfgSet::windows_x64(sess, features),
+            crate::options::CheckTarget::MacosArm64 => CfgSet::macos_arm64(sess, features),
+            crate::options::CheckTarget::LinuxArm64 => CfgSet::linux_arm64(sess, features),
+            crate::options::CheckTarget::LinuxX64 => CfgSet::linux_x64(sess, features),
+            crate::options::CheckTarget::AndroidArm64 => CfgSet::android_arm64(sess, features),
+            crate::options::CheckTarget::IosArm64 => CfgSet::ios_arm64(sess, features),
+            crate::options::CheckTarget::Web(w) => CfgSet::web(sess, w, features),
+            crate::options::CheckTarget::Host => CfgSet::machine(sess, features),
+        }
     }
 
     /// The machine Relax runs on, whatever RELAX_CHECK_TARGET checks: code Relax itself runs
@@ -40,27 +49,13 @@ impl CfgSet {
     /// another target called that target's OS (Windows' FlsAlloc on Linux): every JIT derive
     /// failed, and `makepad host-gen` wrote a short Windows table.
     pub fn machine(sess: &std::sync::Arc<crate::Session>, features: &[String]) -> CfgSet {
-        let mut cs = CfgSet::machine_base(sess, features);
+        let mut cs = CfgSet::for_target(sess, crate::options::CheckTarget::machine(), features);
         // cargo without `--target` (what a Host check target stands for) applies RUSTFLAGS
         // `--cfg` to everything it builds, proc macros and build scripts included
         if sess.options.check_target == crate::options::CheckTarget::Host {
             cs.set.extend(sess.options.cfgs.iter().cloned());
         }
         cs
-    }
-
-    fn machine_base(sess: &std::sync::Arc<crate::Session>, features: &[String]) -> CfgSet {
-        if cfg!(target_os = "android") {
-            CfgSet::android_arm64(sess, features)
-        } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-            CfgSet::macos_arm64(sess, features)
-        } else if cfg!(target_os = "ios") {
-            CfgSet::ios_arm64(sess, features)
-        } else if cfg!(windows) {
-            CfgSet::windows_x64(sess, features)
-        } else {
-            CfgSet::linux_x64(sess, features)
-        }
     }
 
     /// aarch64 macOS, release, panic=abort, not test.
@@ -147,6 +142,22 @@ impl CfgSet {
             "target_pointer_width=64", "target_endian=little", "panic=abort",
             "target_feature=neon", "target_has_atomic=8", "target_has_atomic=16",
             "target_has_atomic=32", "target_has_atomic=64", "target_has_atomic=ptr",
+        ].iter().map(|s| s.to_string()).collect();
+        for f in features {
+            set.push(format!("feature={}", f));
+        }
+        CfgSet { session: sess.clone(), set }
+    }
+
+    /// aarch64-unknown-linux-gnu, release, panic=abort, not test.
+    pub fn linux_arm64(sess: &std::sync::Arc<crate::Session>, features: &[String]) -> CfgSet {
+        let mut set: Vec<String> = [
+            "unix", "target_os=linux", "target_family=unix", "target_env=gnu", "target_abi=",
+            "target_vendor=unknown", "target_arch=aarch64",
+            "target_pointer_width=64", "target_endian=little", "panic=abort",
+            "target_feature=neon", "target_has_atomic=8", "target_has_atomic=16",
+            "target_has_atomic=32", "target_has_atomic=64", "target_has_atomic=128",
+            "target_has_atomic=ptr",
         ].iter().map(|s| s.to_string()).collect();
         for f in features {
             set.push(format!("feature={}", f));
@@ -255,6 +266,8 @@ impl CfgSet {
             "aarch64-apple-darwin"
         } else if self.has("target_os=ios") {
             "aarch64-apple-ios"
+        } else if self.has("target_arch=aarch64") {
+            "aarch64-unknown-linux-gnu"
         } else {
             "x86_64-unknown-linux-gnu"
         }

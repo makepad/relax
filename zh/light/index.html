@@ -651,7 +651,7 @@ cd hello
 ../relax/target/release/relax run --quiet hello    # 在 JIT 下运行 main
 ../relax/target/release/relax test hello           # 运行它的 #[test] 函数
 ../relax/target/release/relax check hello          # 只做类型检查和借用检查</pre>
-<p>在包的目录里运行 <code>relax</code>，参数给包名；别移动 <code>relax</code> 的检出目录，std 从那里读取。在一台 16 核 x86-64 Linux 机器上构建用了 53 s；<code>hello</code> 随后 0.24 s 启动，之后不到 0.1 s。已在 Linux x86-64 和 macOS arm64 上测试。</p>
+<p>在包的目录里运行 <code>relax</code>，参数给包名；别移动 <code>relax</code> 的检出目录，std 从那里读取。在一台 16 核 x86-64 Linux 机器上构建用了 53 s；<code>hello</code> 随后 0.24 s 启动，之后不到 0.1 s。Relax 可生成 x86-64 和 AArch64 机器码。支持在 Linux x86-64、GNU/Linux AArch64（aarch64-unknown-linux-gnu）和 macOS arm64 上进行 release 构建。Linux 上的 WebAssembly 测试要求 Node 启用 memory64。Windows 尚未测试。</p>
 <p>没有依赖的包不需要联网；crates.io 依赖取自 <code>~/.cargo</code>，或下载后按索引的 SHA-256 校验。更多见 <a href="https://github.com/makepad/relax#readme">README</a>。</p>
 <h2><a name="plain-toolchain">一套用于 Rust 代码的新工具链，从源码字节到机器码。</a></h2>
 <p>Relax 不是 rustc 的套壳，也不是 LLVM 的插件：<b>它把两者都换掉了</b>，连同 Cargo 和链接器夹在中间的那部分。</p>
@@ -1072,7 +1072,7 @@ const DATA = {
       "../relax/target/release/relax test hello           # 运行它的 #[test] 函数",
       "../relax/target/release/relax check hello          # 只做类型检查和借用检查"
     ].join("\n"),
-    after: "在包的目录里运行 `relax`，参数给包名；别移动 `relax` 的检出目录，std 从那里读取。在一台 16 核 x86-64 Linux 机器上构建用了 53 s；`hello` 随后 0.24 s 启动，之后不到 0.1 s。已在 Linux x86-64 和 macOS arm64 上测试。",
+    after: "在包的目录里运行 `relax`，参数给包名；别移动 `relax` 的检出目录，std 从那里读取。在一台 16 核 x86-64 Linux 机器上构建用了 53 s；`hello` 随后 0.24 s 启动，之后不到 0.1 s。Relax 可生成 x86-64 和 AArch64 机器码。支持在 Linux x86-64、GNU/Linux AArch64（aarch64-unknown-linux-gnu）和 macOS arm64 上进行 release 构建。Linux 上的 WebAssembly 测试要求 Node 启用 memory64。Windows 尚未测试。",
     network: "没有依赖的包不需要联网；crates.io 依赖取自 `~/.cargo`，或下载后按索引的 SHA-256 校验。更多见 [README](https://github.com/makepad/relax#readme)。"
   },
 

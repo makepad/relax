@@ -28,8 +28,9 @@ called, optimises the hot ones while the program runs, and patches your edits in
 | **Speed of optimised code** | 1.00× (`--release`) | **slower: 1.12× the time on x64, 1.24× on arm64** (geomean of 21 workloads) |
 | **Needs** | rustc, LLVM, a linker | **one Rust library**: 438k lines, 0 crates.io dependencies |
 
-Code generation for x86-64 and AArch64; from a fresh clone the repository
-builds and its tests pass on Linux x86-64 and macOS arm64. Windows isn't tested.
+Relax generates x86-64 and AArch64 machine code. Release builds are supported on Linux x86-64,
+GNU/Linux AArch64 (`aarch64-unknown-linux-gnu`), and macOS arm64. Linux WebAssembly tests require
+Node with `memory64` enabled. Windows isn't tested.
 
 ## The tradeoffs
 

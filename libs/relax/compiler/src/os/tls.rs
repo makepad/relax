@@ -4,10 +4,10 @@
 //! - `key_create(dtor)`: one key per process; `dtor(block)` runs at thread exit.
 //! - `get(key)` / `set(key, block)`: the calling thread's block.
 //! - `jit_offset(key, emit)`: the value of `Env::tls_key` for this OS (`emit` places glue code
-//!   and returns its address). Linux x86-64 reads a native runtime's static-TLS cell via fs;
-//!   under Relax it then reads this runtime's word in that block. macOS uses the TSD slot
-//!   (checked against pthread_getspecific), Android bionic's TLS_SLOT_APP.
-//! - `static_tls_*`: Linux x86-64's reserve of static TLS for programs' `#[thread_local]` statics.
+//!   and returns its address). Linux reads a native runtime's cell relative to the thread
+//!   pointer. Under Relax a second load reads this runtime's word in the outer runtime's block.
+//!   macOS uses the TSD slot (checked against pthread_getspecific), Android bionic's TLS_SLOT_APP.
+//! - `static_tls_*`: Linux's reserve of static TLS for programs' `#[thread_local]` statics.
 
 include!("../rt_abi.rs");
 pub use imp::*;
@@ -42,7 +42,7 @@ mod imp {
 
     #[cfg(not(relax))]
     thread_local! {
-        /// this thread's block (static TLS: JIT code reads it at fs:[env.tls_key])
+        /// this thread's block (static TLS: JIT code reads it at TP + env.tls_key)
         static TLS_BLOCK: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     }
 
@@ -54,23 +54,21 @@ mod imp {
         TLS_BLOCK.with(|c| c.set(b as u64));
     }
 
-    /// This (native) runtime's block cell's offset from the thread pointer (fs:[0] holds the
-    /// thread pointer on x86-64 Linux).
-    #[cfg(all(not(relax), target_arch = "x86_64"))]
+    /// This native runtime's block cell is at a fixed offset from the ABI thread pointer.
+    #[cfg(not(relax))]
     fn cell_offset() -> i64 {
         let tp: u64;
+        #[cfg(target_arch = "x86_64")]
         unsafe { core::arch::asm!("mov {}, qword ptr fs:[0]", out(reg) tp, options(nostack, readonly, preserves_flags)) };
+        #[cfg(target_arch = "aarch64")]
+        unsafe { core::arch::asm!("mrs {}, tpidr_el0", out(reg) tp, options(nomem, nostack, preserves_flags)) };
         TLS_BLOCK.with(|c| c as *const std::cell::Cell<u64> as u64).wrapping_sub(tp) as i64
     }
 
-    /// Linux x86-64: the block pointer lives in a static-TLS cell of this (executable)
-    /// runtime, at a fixed offset from the thread pointer that JIT code reads via fs.
+    /// The native runtime's thread-pointer-relative block cell offset.
     #[cfg(not(relax))]
     pub fn jit_offset(_key: u64, _emit: &dyn Fn(&[u8]) -> u64) -> u64 {
-        #[cfg(target_arch = "x86_64")]
         let off = cell_offset();
-        #[cfg(not(target_arch = "x86_64"))]
-        let off: i64 = compile_error!("the JIT does not build for Linux on this CPU: its thread-local fast path has only the x86-64 (fs) reader on Linux");
         if off < i32::MIN as i64 || off > i32::MAX as i64 {
             // a plain error: nothing this run does moves the cell
             eprintln!("relax: this runtime's thread-local block cell is {off:#x} from the thread pointer, out of the reach of JIT code");
@@ -80,9 +78,9 @@ mod imp {
     }
 
     /// The key of word `off` of this runtime's thread-local block, for a runtime it runs under
-    /// Relax (jit.rs relax_tls_cell): this runtime's block cell (fs-relative, negative) in the
-    /// high half, `off` in the low half (x64::TLS_TWO_LOAD).
-    #[cfg(all(not(relax), target_arch = "x86_64"))]
+    /// Relax (jit.rs relax_tls_cell). The signed thread-pointer-relative cell offset is in
+    /// the high half. The byte offset `off` within the outer block is in the low half.
+    #[cfg(not(relax))]
     pub fn cell_key(off: u32) -> u64 {
         ((cell_offset() as i32 as u32 as u64) << 32) | off as u64
     }
@@ -118,7 +116,7 @@ mod imp {
     }
 
     /// Under Relax: the two-load key of this runtime's word in the outermost runtime's block,
-    /// checked through the emitted two-load reader (relax_backend x64::tls2_reader).
+    /// checked through the same two-load sequence the backend inlines.
     #[cfg(relax)]
     pub fn jit_offset(key: u64, emit: &dyn Fn(&[u8]) -> u64) -> u64 {
         let c = cell();
@@ -126,26 +124,29 @@ mod imp {
             eprintln!("relax: the runtime that runs this one hands out no thread-local block word (__relax_tls_cell), so JIT code cannot reach this runtime's thread-local block");
             std::process::exit(2);
         }
+        #[cfg(target_arch = "x86_64")]
         let reader = emit(&relax_backend::x64::tls2_reader());
+        #[cfg(target_arch = "aarch64")]
+        let reader = emit(&relax_backend::arm64::tls2_reader());
         let read: rt_fn_ty!(fn(u64) -> u64) = unsafe { std::mem::transmute(reader as usize) };
         let old = get(key);
         set(key, 0x5a5a_0000 as *mut u8);
         let seen = read(c);
         set(key, old);
         if seen != 0x5a5a_0000 {
-            panic!("thread-local fast path: block word {:#x} (fs:[{:#x}] + {:#x}) reads {:#x}", c, (c >> 32) as i32, c as u32, seen);
+            panic!("thread-local fast path: block word {:#x} (thread pointer {:+#x}, block + {:#x}) reads {:#x}", c, (c >> 32) as i32, c as u32, seen);
         }
         c
     }
 }
 
-/// Linux x86-64: the executable's static TLS that JIT programs' `#[thread_local]` statics share
+/// Linux: the executable's static TLS that JIT programs' `#[thread_local]` statics share
 /// (jit.rs Unit::thread_local_place, `Inst::TlsStatic`): `RESERVE` bytes at one offset from the
 /// thread pointer on every thread (the executable's own static TLS, as `TLS_BLOCK`), zero when a
 /// thread starts (its TLS image is .tbss). Handed out once per process, never freed: a variable
 /// keeps its offset for the process. Not when this runtime itself runs under Relax: its
 /// thread-locals are the outer program's, which need not be at a fixed offset.
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 mod fixed {
     use std::cell::Cell;
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -170,9 +171,12 @@ mod fixed {
             if cfg!(relax) {
                 return None;
             }
+            #[cfg(target_arch = "x86_64")]
             let reader = emit(&relax_backend::x64::fs_reader());
-            let fs_base: rt_fn_ty!(fn() -> u64) = unsafe { std::mem::transmute(reader as usize) };
-            let off = (reserve() as u64).wrapping_sub(fs_base()) as i64;
+            #[cfg(target_arch = "aarch64")]
+            let reader = emit(&relax_backend::arm64::thread_pointer_reader());
+            let thread_pointer: rt_fn_ty!(fn() -> u64) = unsafe { std::mem::transmute(reader as usize) };
+            let off = (reserve() as u64).wrapping_sub(thread_pointer()) as i64;
             (off >= i32::MIN as i64 && off + RESERVE as i64 <= i32::MAX as i64).then_some(off as i32)
         });
     }
@@ -230,7 +234,7 @@ mod fixed {
         }
     }
 }
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(not(target_os = "linux"))]
 mod fixed {
     pub fn static_tls_init(_emit: &dyn Fn(&[u8]) -> u64) {}
     pub fn static_tls_base() -> Option<i32> {
@@ -382,13 +386,13 @@ pub(crate) unsafe fn reset_statics() {
     fixed::reset_statics();
 }
 
-#[cfg(all(test, target_os = "linux", target_arch = "x86_64"))]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     /// relax#263: runtimes nested under Relax at any depth each keep their thread's block pointer
     /// in a word of the outermost runtime's thread-local block. Four words, as four nested
     /// runtimes take them: on each of two threads the block pointers written at the words'
-    /// addresses read back through the two-load reader JIT code inlines (the block cell at a
-    /// negative fs offset: `sar`), each thread its own, and lead to a variable of that runtime's
+    /// addresses read back through the two-load reader JIT code inlines, each thread its
+    /// own, and lead to a variable of that runtime's
     /// block; a thread with no block, then a block with no word set, reads nulls. Under Relax the
     /// same requests go through the forward.
     #[test]
@@ -398,12 +402,17 @@ mod tests {
             assert_ne!(key, 0, "runtime {i} needs a nonzero key");
             assert!(!keys[..i].contains(&key), "runtime {i} shares key {key:#x} with an earlier runtime");
             let hi = (key >> 32) as i32;
+            #[cfg(target_arch = "x86_64")]
             assert!(hi < 0, "runtime {i}'s outer block cell needs a negative fs offset, got {hi}");
             assert_eq!(hi, (keys[0] >> 32) as i32, "runtime {i} must use the same outer block cell");
             assert_eq!((key as u32) % 8, 0, "runtime {i}'s word must be 8-byte aligned");
         }
 
-        let code = relax_backend::exec::Code::new(&relax_backend::x64::tls2_reader()).expect("executable memory");
+        #[cfg(target_arch = "x86_64")]
+        let bytes = relax_backend::x64::tls2_reader();
+        #[cfg(target_arch = "aarch64")]
+        let bytes = relax_backend::arm64::tls2_reader();
+        let code = relax_backend::exec::Code::new(&bytes).expect("executable memory");
         let read: rt_fn_ty!(fn(u64) -> u64) = unsafe { std::mem::transmute(code.ptr()) };
         // Each word holds what a nested runtime keeps there: its thread's block (here a buffer per
         // thread and runtime), whose variables its JIT code reads at an offset after the two loads.

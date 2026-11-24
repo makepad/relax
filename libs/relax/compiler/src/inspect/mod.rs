@@ -214,7 +214,7 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("why-hung", "[probe_ms=200]", "is it stuck and why: verdict (deadlock / blocked / busy / idle), the wait chain or cycle, stacks of the threads in it"),
     ("capture", "[why=<text>]", "capture the JIT's state and flight recording; answers the likely cause and report path"),
     ("why-slow", "[s=3]", "where the time goes: ranked findings -- the main thread's CPU split (program / compiles / Relax runtime / system), its hot fns, the owner's service, other busy threads"),
-    ("prof", "[s=3] [hz=200] [threads=all|main|owner|program|compiler|<name>] [ev=cpu|cycles|instructions|branch-misses|cache-misses] [view=top|tree|callers|flame] [focus=<fn>] [fn=<fn>] [min=1] [n=15] [save=1]", "sampling profile of JIT and host frames: per-thread CPU, activity split, top fns by self time with their hottest line, inclusive fns; view=tree: the call tree with the JIT's inline levels as frames and each frame's tier (focus= re-roots at a fn, view=callers fn= inverts); save=1 / view=flame writes folded stacks; ev= samples a hardware event (Linux)"),
+    ("prof", "[s=3] [hz=200] [threads=all|main|owner|program|compiler|<name>] [ev=cpu|cycles|instructions|branch-misses|cache-misses] [view=top|tree|callers|flame] [focus=<fn>] [fn=<fn>] [min=1] [n=15] [save=1]", "sampling profile of JIT and host frames: per-thread CPU, activity split, top fns by self time with their hottest line, inclusive fns; view=tree: the call tree with the JIT's inline levels as frames and each frame's tier (focus= re-roots at a fn, view=callers fn= inverts); save=1 / view=flame writes folded stacks; ev= samples a hardware event on x86-64 Linux"),
     ("pf", "<summary|frames|frame F<n>|top cpu|jit|gpu|hitches|timeline F<n>|lanes|why-slow|diff> [s=3] [save=x.mkpf] [base=y.mkpf]", "the profiler for agents: the client records the app's live `prof` stream (lanes, phases, waits, compile jobs, JIT installs with tiers, GPU passes) for s seconds and answers as compact text: finding first, tables, drill-down ids; file=<x.mkpf> pf ... answers on a recording"),
     ("rec", "status | save [last=60s|5m|all] [path=<file>] | mark <text> | on | off | replay (file=<x.mkpf>: client side)", "the flight recorder (always on, bounded memory): the last minutes of frames, every thread's spans and waits, the owner's requests with requester and call site, JIT installs, events (app marks, logs, panics, script errors, hitches, zone swaps), input; save = a .mkpf recording for `pf` queries and Scope; automatic recordings on a hitch over 1 s, a panic, a fatal fault"),
     ("timeline", "start [max_s=30] | stop | frames [n=30] | frame <n|slowest> | waits [s=3] [n=15] | save", "dataflow timeline: record UI phases, owner service, waits and wakes; per frame the critical path, work vs critical path vs wall, longest waits and who ended them; waits = contention by what was waited on; save = a .mkpf profile recording (Scope, `pf` queries)"),
@@ -233,7 +233,7 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("path", "<H<n>|R<n>>", "the full stack of a heap site id"),
     ("count", "<fn> [time=1] [tier=o1]", "exact call counts (and inclusive time) of every slot of a fn: its code is rebuilt with probes at the tier of the code it replaces (O3 code gets an O3 instrumented build; tier=o1 asks for O1) and installed as a probe group G<n>; every slot whose code holds an inlined copy of the fn is rebuilt at its tier without that inlining, so it calls the counted code; each row names the code version replaced and the one now, later installs with an inlined copy are rebuilt too (a `probe` event)"),
     ("asm", "<fn|@slot> [vs=rustc] [native=<binary>] [s=2] [ev=cpu|cycles|instructions|branch-misses|cache-misses] [view=summary|lines|listing|code] [line=<n>] [at=<off> [n=24]] | top vs=rustc [s=3] [n=15]", "the JIT's machine code of a fn next to rustc's for the same fn (native=: a release build with line tables), aligned by source line, with CPU samples and PGO counts per line and a diff summary first: excess instructions, spill traffic, kept bounds checks, calls rustc inlined, loops rustc vectorised; at=: the n instructions either side of one code offset (a fault's `off` in decimal, or 0x hex), the one at it marked; `asm top vs=rustc` ranks the hottest fns by the time their excess instructions cost"),
-    ("vsnative", "[native=<bin>] [args=a,b] [s=5] [warm_ms=3000] [ev=instructions|cycles|cpu] [n=20] | pid=<native pid> [s=10] [hz=1000] [threads=main] [nthreads=<name>|busy] [roots=a,b] [tree=<depth>] [min=0.1] [save=1] | file=<native raw samples> [native=<bin>] [s=] [threads=main] [roots=a,b] [save=1]", "the program's rustc release build run next to this process for the same window, both sampled with the same event, diffed per fn: events/s here and native, ratio, shares, the JIT tier (Linux); pid=: an already-running native build sampled WITH STACKS (its CFI + DWARF inline tree) next to this process: self and inclusive time per source fn on both sides, cut at roots= (what a meter times), a merged call tree -- the JIT-vs-native attribution table (x86_64 Linux); file=: the same tables against the native app's own recorded samples (its `prof threads=main raw=<file>`; macOS and Linux), this process sampled now for deterministic work"),
+    ("vsnative", "[native=<bin>] [args=a,b] [s=5] [warm_ms=3000] [ev=instructions|cycles|cpu] [n=20] | pid=<native pid> [s=10] [hz=1000] [threads=main] [nthreads=<name>|busy] [roots=a,b] [tree=<depth>] [min=0.1] [save=1] | file=<native raw samples> [native=<bin>] [s=] [threads=main] [roots=a,b] [save=1]", "the program's rustc release build run next to this process for the same window, both sampled with the same event, diffed per fn: events/s here and native, ratio, shares, the JIT tier (x86-64 Linux); pid=: an already-running native build sampled WITH STACKS (its CFI + DWARF inline tree) next to this process: self and inclusive time per source fn on both sides, cut at roots= (what a meter times), a merged call tree -- the JIT-vs-native attribution table (x86_64 Linux); file=: the same tables against the native app's own recorded samples (its `prof threads=main raw=<file>`; macOS and Linux), this process sampled now for deterministic work"),
     ("ab", "<fn|@slot> b=<base|o1|opt:<tok>,..|inline:<callee>|noinline:<callee>> [a=base] [rounds=5] [s=1] [metric=incl|self] [per=s|frame|call] [ev=cpu|cycles|instructions] [keep=a|b]", "a live A/B of one fn: the variants' builds installed in turn (ABAB rounds), each round's cost rate of the fn measured alike; answer: medians, spread, permutation-test p, verdict (real / no difference beyond noise)"),
     ("contention", "[s=3] [n=15]", "lock / condvar / park / owner waits grouped by what was waited on: total and longest wait, per frame, waiting threads, who ended them (records s seconds of timeline first; alias of timeline waits)"),
     ("counters", "[s=1] [n=12]", "hardware counters over a window: Linux per thread (cycles, instructions, IPC, branch and cache misses); macOS the process's instructions and cycles (all a non-root process gets)"),
@@ -817,12 +817,27 @@ pub mod activity {
         static MINE: std::cell::Cell<usize> = const { std::cell::Cell::new(usize::MAX) };
     }
 
-    /// A static string packed in a word: pointer (47 bits) and length (16 bits).
-    pub fn pack(s: &'static str) -> u64 {
-        (s.as_ptr() as u64 & ((1 << 47) - 1)) | ((s.len().min(0xffff) as u64) << 48)
+    const ADDRESS_MASK: u64 = (1 << 48) - 1;
+
+    /// A static string packed into a word with a 48-bit address and 16-bit byte length.
+    pub(super) fn pack_with_limit(s: &'static str, max_len: u16) -> u64 {
+        let addr = s.as_ptr() as u64;
+        if s.is_empty() || addr > ADDRESS_MASK {
+            return 0;
+        }
+        let mut len = s.len().min(max_len as usize);
+        while !s.is_char_boundary(len) {
+            len -= 1;
+        }
+        addr | ((len as u64) << 48)
     }
+
+    pub fn pack(s: &'static str) -> u64 {
+        pack_with_limit(s, u16::MAX)
+    }
+
     pub fn unpack(w: u64) -> &'static str {
-        let (p, n) = (w & ((1 << 47) - 1), (w >> 48) as usize);
+        let (p, n) = (w & ADDRESS_MASK, (w >> 48) as usize);
         if p == 0 || n == 0 {
             return "";
         }
