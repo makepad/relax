@@ -200,7 +200,7 @@ x64: an 8-core desktop CPU, Linux; arm64: an Apple M4 laptop, macOS. rustc 1.99.
 
 **Which `--release`?** Both are measured: stock (`cargo build --release`, generic CPU) and native (`-C target-cpu=native`). Relax always compiles for the CPU it runs on, so native is the like-for-like column.
 
-**Where the gap comes from**, from instruction-level comparisons of the same functions in one 3D-print slicer run: extra instructions rather than stalls (1.26× the instructions cost 1.15× the cycles).
+**Where the gap comes from**, measured from instruction-level comparisons of the same functions in one 3D-print slicer run: extra instructions rather than stalls (1.26× the instructions cost 1.15× the cycles).
 
 | Cause | Extra instructions (slicer run) |
 | --- | --- |
