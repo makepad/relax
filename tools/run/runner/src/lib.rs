@@ -638,7 +638,13 @@ fn run(raw_args: Vec<Vec<u8>>, installation_start: bool) {
         }
     }
     provided();
-    let sess = relax_compiler::session_from_env(&args);
+    let sess = match relax_compiler::session_from_env(&args) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("{tool}: {e}", tool = relax_compiler::tool_name());
+            std::process::exit(2);
+        }
+    };
     relax_compiler::cli_main(&sess);
 }
 
@@ -746,13 +752,14 @@ fn run_spec(opts: Vec<String>, spec: &fetch::Spec, cached: bool, rest: Vec<Strin
             // main thread makes them for any other run: the program's heap, not the compile
             // thread's compiler arena (the settle swap destroys it)
             let workspace = relax_compiler::zone_alloc::kept_with(|| -> Result<String, String> {
+                relax_compiler::options::CheckTarget::from_env_value(std::env::var_os("RELAX_CHECK_TARGET").as_deref())?;
                 let snap = if cached { fetch::cached(&home, &spec) } else { fetch::fetch(&home, &spec) }?;
                 let workspace = fetch::mount(&home, &snap)?;
                 mount_vars(&workspace, &rest[0])?;
                 std::mem::forget(snap);
                 Ok(workspace)
             })?;
-            let (sess, words, invocation) = session(opts.clone(), rest.clone());
+            let (sess, words, invocation) = session(opts.clone(), rest.clone())?;
             // compiler-arena blocks (the compile thread's allocations go there): see boot_package
             std::mem::forget((workspace, words, invocation));
             Ok(sess)
@@ -761,6 +768,11 @@ fn run_spec(opts: Vec<String>, spec: &fetch::Spec, cached: bool, rest: Vec<Strin
         if let Some(code) = relax_compiler::run::cmd_run_app(&package, words, Box::new(prepare)) {
             return code;
         }
+    }
+    if let Err(e) = relax_compiler::options::CheckTarget::from_env_value(std::env::var_os("RELAX_CHECK_TARGET").as_deref()) {
+        eprintln!("{tool}: {e}", tool = relax_compiler::tool_name());
+        relax_compiler::run::report_failed(&e, 2);
+        return 2;
     }
     let snap = match if cached { fetch::cached(&home, spec) } else { fetch::fetch(&home, spec) } {
         Ok(s) => s,
@@ -827,6 +839,10 @@ fn run_src(words: &[String]) -> i32 {
     };
     if rest.first().map_or(true, |p| p.starts_with('-')) {
         eprintln!("{tool} run --src <store> needs a package after the store", tool = relax_compiler::tool_name());
+        return 2;
+    }
+    if let Err(e) = relax_compiler::options::CheckTarget::from_env_value(std::env::var_os("RELAX_CHECK_TARGET").as_deref()) {
+        eprintln!("{tool}: {e}", tool = relax_compiler::tool_name());
         return 2;
     }
     let (path, range) = match src.rsplit_once('@').and_then(|(p, r)| relax_compiler::vfs::parse_range(r).map(|r| (p, Some(r)))) {
@@ -933,7 +949,13 @@ pub fn run_checkout(opts: Vec<String>, rest: Vec<String>) -> i32 {
 
 fn boot_package(opts: Vec<String>, rest: Vec<String>) -> i32 {
     let _phase = relax_compiler::zone_alloc::compiler();
-    let (sess, a, invocation) = session(opts, rest);
+    let (sess, a, invocation) = match session(opts, rest) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("{tool}: {e}", tool = relax_compiler::tool_name());
+            return 2;
+        }
+    };
     let code = relax_compiler::run::cmd_run(&sess, &a);
     // made in the compiler arena (the boot thread's allocations go there), which the zone swap
     // after the first present destroyed: freeing them on the way out wrote into unmapped chunks
@@ -946,7 +968,7 @@ fn boot_package(opts: Vec<String>, rest: Vec<String>) -> i32 {
 /// The run's session, its words and its invocation, made on the thread that compiles (an
 /// embedder's boot thread, as the Android host's, compiles like the loader's main thread): its
 /// allocations go to the compiler arena, std's mpmc context is entered in the kept heap first.
-fn session(opts: Vec<String>, rest: Vec<String>) -> (std::sync::Arc<relax_compiler::Session>, Vec<String>, Vec<String>) {
+fn session(opts: Vec<String>, rest: Vec<String>) -> Result<(std::sync::Arc<relax_compiler::Session>, Vec<String>, Vec<String>), String> {
     {
         let _k = relax_compiler::zone_alloc::kept();
         let (_tx, rx) = std::sync::mpsc::sync_channel::<()>(0);
@@ -957,6 +979,6 @@ fn session(opts: Vec<String>, rest: Vec<String>) -> (std::sync::Arc<relax_compil
     a.extend(rest);
     let mut invocation = vec!["loader".to_string(), "run".to_string()];
     invocation.extend_from_slice(&a);
-    let sess = relax_compiler::session_from_env(&invocation);
-    (sess, a, invocation)
+    let sess = relax_compiler::session_from_env(&invocation)?;
+    Ok((sess, a, invocation))
 }
