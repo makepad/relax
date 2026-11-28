@@ -87,12 +87,19 @@ pub fn check_body_in(cx: &crate::tcx::EvalCx<'_>, prog: &Program, tcx: &Tcx, bod
     let checkpoint = tcx.dcx.checkpoint();
     let mut result = driver::check_root(cx, prog, tcx, body, fv_cx);
     if !result.errors.is_empty() || !body.errors.is_empty() { tcx.dcx.note_reported_error(); }
-    let crate::infer::diagnostics::Taken { errors, warnings, drained: _ } = tcx.dcx.take_since(checkpoint);
-    for error in errors {
-        let owner = if error.cause.body_id == crate::program::NO_DEF { body.def } else { error.cause.body_id };
-        let mut diagnostic = diagnostics::Diag::new("", crate::mir::Span { file: prog.def(owner).file, lo: error.cause.span, hi: error.cause.span }, error.message);
+    let crate::infer::diagnostics::Taken { errors, warnings, drained } = tcx.dcx.take_since(checkpoint);
+    let push = |result: &mut Verdict, cause: crate::next_solver::fulfill::ObligationCause, message: String| {
+        let owner = if cause.body_id == crate::program::NO_DEF { body.def } else { cause.body_id };
+        let mut diagnostic = diagnostics::Diag::new("", crate::mir::Span { file: prog.def(owner).file, lo: cause.span, hi: cause.span }, message);
         diagnostic.labels.push((diagnostic.span, String::new(), true));
         result.errors.push(diagnostics::capture(prog, owner, &diagnostic));
+    };
+    for error in errors { push(&mut result, error.cause, error.message); }
+    // the session's drain took this check's only error: it is still not clean
+    if let (true, Some(d)) = (result.errors.is_empty(), drained) {
+        let owner = if d.cause.body_id == crate::program::NO_DEF { body.def } else { d.cause.body_id };
+        let message = crate::typeck::previous_errors_summary(prog, prog.def(owner).file, &d, crate::infer::diagnostics::Untaken::Delivered);
+        push(&mut result, d.cause, message);
     }
     for warning in warnings { eprintln!("warning: {}", warning.message); }
     result

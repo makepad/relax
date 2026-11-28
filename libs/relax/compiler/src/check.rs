@@ -359,12 +359,20 @@ impl ItemErrors {
 fn with_item_diagnostics(prog: &Program, tcx: &Tcx, check: impl FnOnce() -> Vec<String>) -> ItemErrors {
     let cp = tcx.dcx.checkpoint();
     let errors = check();
-    let relax_types::infer::diagnostics::Taken { errors: reported, warnings, drained: _ } = tcx.dcx.take_since(cp);
-    let reported = reported.into_iter().map(|error| {
+    let relax_types::infer::diagnostics::Taken { errors: reported, warnings, drained } = tcx.dcx.take_since(cp);
+    let mut reported: Vec<String> = reported.into_iter().map(|error| {
         let cause = error.cause;
         if cause.body_id == crate::program::NO_DEF { error.message }
         else { prog.record_error(prog.def(cause.body_id).file, cause.span, "typeck", error.message) }
     }).collect();
+    if let (true, true, Some(d)) = (errors.is_empty(), reported.is_empty(), drained) {
+        // (an error of no definition has no file: its message alone, as the errors above keep it)
+        let file = if d.cause.body_id == crate::program::NO_DEF { None } else { Some(prog.def(d.cause.body_id).file) };
+        reported.push(match file {
+            Some(file) => prog.record_error(file, d.cause.span, "typeck", relax_types::typeck::previous_errors_summary(prog, file, &d, relax_types::infer::diagnostics::Untaken::Delivered)),
+            None => format!("type checking failed due to previous errors: {} (already shown by the session)", d.message),
+        });
+    }
     for w in warnings { stderr_line!("warning: {}", w.message); }
     ItemErrors { errors, reported }
 }
@@ -3319,5 +3327,39 @@ mod def_work_tests {
         assert!(matches!(r, DefWork::Failed(e) if e == "ice: the query's table has no entry"));
         let r = def_work(ice, || -> u32 { panic!("plain") });
         assert!(matches!(r, DefWork::Failed(e) if e == "ice: plain"));
+    }
+}
+
+#[cfg(test)]
+mod item_diagnostics_tests {
+    use super::*;
+
+    /// SYNTHETIC: no program is known whose only error reaches the session log inside an item
+    /// check's window (a conflicting impl's E0119 comes from the overlap query during collection,
+    /// before the check, and the check's own re-ask of it is deduplicated). The closure reports an
+    /// error there and drains it, as a session drain would have: the item must not come out clean.
+    #[test]
+    fn a_drained_error_never_leaves_the_item_clean() {
+        let path = std::env::temp_dir().join(format!("relax-item-diagnostics-{}.rs", std::process::id()));
+        std::fs::write(&path, "#![no_std]\ntrait Tr {}\nstruct S;\nimpl Tr for S {}\n").unwrap();
+        let session = std::sync::Arc::new(crate::Session::default());
+        let mut prog = Program::new(&session);
+        prog.load_crate("item_diagnostics", path.to_str().unwrap(), 2021, crate::cfg::CfgSet::host(&session, &[]), vec![]).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let mut tcx = Tcx::new();
+        tcx.collect(&prog);
+        let d = (0..prog.defs.len()).map(|i| DefId(i as u32)).find(|d| prog.def(*d).kind == DefKind::Impl).unwrap();
+        assert!(def_item_errors(&prog, &tcx, d).messages().is_empty(), "the impl is clean without the injected error");
+        let mut shown = Vec::new();
+        let checked = with_item_diagnostics(&prog, &tcx, || {
+            let errors = tcx.check_def_signature(&prog, d);
+            tcx.dcx.report(relax_types::next_solver::fulfill::ObligationCause { body_id: d, span: 0 }, "injected into the item check's window".into());
+            // the session's drain, between the report and the take
+            shown.extend(tcx.dcx.drain_reported().0.into_iter().map(|e| e.message));
+            errors
+        });
+        let messages = checked.messages();
+        assert!(!messages.is_empty(), "a drained error must not leave the item clean (the drain showed {shown:?})");
+        assert!(messages.iter().any(|m| m.contains("type checking failed due to previous errors: first error:") && m.contains("(already shown by the session)")), "{messages:?}");
     }
 }

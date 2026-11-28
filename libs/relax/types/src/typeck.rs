@@ -1036,6 +1036,22 @@ fn check_fn_body(cx: &crate::tcx::EvalCx<'_>, prog: &Program, tcx: &Tcx, def: De
     fcx.into_body()
 }
 
+const PREVIOUS_ERRORS: &str = "type checking failed due to previous errors";
+
+/// The text of a check that found no error of its own but knows of an earlier one: that error's
+/// place and message, and where it went.
+pub fn previous_errors_summary(prog: &Program, file: u32, d: &crate::infer::diagnostics::Diagnostic, how: crate::infer::diagnostics::Untaken) -> String {
+    use crate::infer::diagnostics::Untaken;
+    let loc = prog.error_location(file, d.cause.span);
+    let (line, col) = loc.source.line_col(loc.span.lo);
+    let how = match how {
+        Untaken::Delivered => "already shown by the session".into(),
+        Untaken::OtherThread(t) => format!("emitted on thread {t}"),
+        Untaken::EarlierCopy => "its first copy came from an earlier check on this thread".into(),
+    };
+    format!("{PREVIOUS_ERRORS}: first error: {}:{line}:{col}: {} ({how})", loc.source.path(), d.message)
+}
+
 impl<'a> Fcx<'a> {
     fn into_body(mut self) -> Body {
         if !self.b.errors.is_empty() { self.infcx.errors.note_reported_error(); }
@@ -1047,18 +1063,11 @@ impl<'a> Fcx<'a> {
         for warning in taken.warnings { eprintln!("warning: {}", warning.message); }
         if self.b.errors.is_empty() && (self.infcx.tainted_by_errors() || taken.drained.is_some()) {
             use crate::infer::diagnostics::Untaken;
-            let summary = "type checking failed due to previous errors";
+            let summary = PREVIOUS_ERRORS;
             let pointer = self.infcx.errors.first_untaken().or_else(|| taken.drained.clone().map(|d| (d, Untaken::Delivered)));
             let message = if let Some((d, how)) = pointer {
                 let file = if d.cause.body_id == crate::program::NO_DEF { self.file } else { self.prog.def(d.cause.body_id).file };
-                let loc = self.prog.error_location(file, d.cause.span);
-                let (line, col) = loc.source.line_col(loc.span.lo);
-                let how = match how {
-                    Untaken::Delivered => "already shown by the session".into(),
-                    Untaken::OtherThread(t) => format!("emitted on thread {t}"),
-                    Untaken::EarlierCopy => "its first copy came from an earlier check on this thread".into(),
-                };
-                format!("{summary}: first error: {}:{line}:{col}: {} ({how})", loc.source.path(), d.message)
+                previous_errors_summary(self.prog, file, &d, how)
             } else if let Some(site) = self.infcx.first_taint() {
                 let file = site.file().replace('\\', "/");
                 let path = if let Some(i) = file.rfind("/src/") { &file[i + 1..] }

@@ -1685,10 +1685,15 @@ impl Tcx {
             diagnostics.set(Some(cx.errors().take_since(checkpoint)));
             Box::new(parts)
         }), |parts| {
-            let crate::infer::diagnostics::Taken { errors, warnings, drained: _ } = diagnostics.take().unwrap_or_default();
+            let crate::infer::diagnostics::Taken { errors, warnings, drained } = diagnostics.take().unwrap_or_default();
             for error in errors {
                 let owner = if error.cause.body_id == NO_DEF { d } else { error.cause.body_id };
                 parts.errors.push(prog.record_error(prog.def(owner).file, error.cause.span, "signature", error.message));
+            }
+            if let (true, Some(e)) = (parts.errors.is_empty(), drained) {
+                let owner = if e.cause.body_id == NO_DEF { d } else { e.cause.body_id };
+                let file = prog.def(owner).file;
+                parts.errors.push(prog.record_error(file, e.cause.span, "signature", crate::typeck::previous_errors_summary(prog, file, &e, crate::infer::diagnostics::Untaken::Delivered)));
             }
             for warning in warnings { eprintln!("warning: {}", warning.message); }
         });
@@ -2411,10 +2416,15 @@ impl Tcx {
             diagnostics.set(Some(cx.errors().take_since(checkpoint)));
             Box::new(decl)
         }), |decl| {
-            let crate::infer::diagnostics::Taken { errors, warnings, drained: _ } = diagnostics.take().unwrap_or_default();
+            let crate::infer::diagnostics::Taken { errors, warnings, drained } = diagnostics.take().unwrap_or_default();
             for error in errors {
                 let owner = if error.cause.body_id == NO_DEF { d } else { error.cause.body_id };
                 decl.errors.push(prog.record_error(prog.def(owner).file, error.cause.span, "signature", error.message));
+            }
+            if let (true, Some(e)) = (decl.errors.is_empty(), drained) {
+                let owner = if e.cause.body_id == NO_DEF { d } else { e.cause.body_id };
+                let file = prog.def(owner).file;
+                decl.errors.push(prog.record_error(file, e.cause.span, "signature", crate::typeck::previous_errors_summary(prog, file, &e, crate::infer::diagnostics::Untaken::Delivered)));
             }
             for warning in warnings { eprintln!("warning: {}", warning.message); }
         });

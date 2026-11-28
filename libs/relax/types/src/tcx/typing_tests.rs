@@ -519,3 +519,82 @@ fn a_session_drain_never_leaves_a_check_clean() {
         "the E0391 is delivered once, by the drain or by a check: {cycle1:?} {cycle2:?} {shown:?}");
     assert_eq!(drained_count, alone_count, "the drain adds no rows");
 }
+
+/// What a session drain does between a check's report and its take, as a running program printing
+/// new errors does (the compiler's Unit::flush_query_errors).
+fn drain_session(dcx: &crate::infer::diagnostics::DiagCtxt) { dcx.drain_reported(); }
+
+/// Each taker of a check's errors, when the session's drain took the check's only error before it did,
+/// must come out not clean: a clean signature or constant would be run although rustc
+/// rejects it.
+#[test]
+fn a_drained_signature_error_never_leaves_the_signature_clean() {
+    let (prog, tcx) = program(b"#![no_std]\nfn f(x: &'a u8) {}");
+    crate::infer::diagnostics::BEFORE_TAKE.with(|h| h.set(Some(drain_session)));
+    let errors = tcx.signature_errors(&prog, named(&prog, "f")).to_vec();
+    crate::infer::diagnostics::BEFORE_TAKE.with(|h| h.set(None));
+    assert!(!errors.is_empty(), "a drained E0261 must not leave the signature clean");
+    assert!(errors.iter().any(|e| e.contains("type checking failed due to previous errors: first error:") && e.contains("(already shown by the session)")), "{errors:?}");
+}
+
+#[test]
+fn a_drained_const_type_error_never_leaves_the_constant_clean() {
+    let (prog, tcx) = program(b"#![no_std]\nconst C: &'a u8 = &1;");
+    crate::infer::diagnostics::BEFORE_TAKE.with(|h| h.set(Some(drain_session)));
+    let errors = tcx.check_def_signature(&prog, named(&prog, "C"));
+    crate::infer::diagnostics::BEFORE_TAKE.with(|h| h.set(None));
+    assert!(!errors.is_empty(), "a drained E0261 must not leave the constant's declaration clean");
+    assert!(errors.iter().any(|e| e.contains("type checking failed due to previous errors: first error:") && e.contains("(already shown by the session)")), "{errors:?}");
+}
+
+/// SYNTHETIC: no program is known whose only error reaches the session log inside the normalization
+/// window. The hook reports an error there and drains it, as a session drain would have.
+#[test]
+fn a_drained_error_never_leaves_the_instantiated_body_clean() {
+    use crate::next_solver::fulfill::ObligationCause;
+    thread_local! { static TAKES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) }; }
+    fn report_and_drain(dcx: &crate::infer::diagnostics::DiagCtxt) {
+        if TAKES.with(|t| { t.set(t.get() + 1); t.get() }) == 1 {
+            dcx.report(ObligationCause { body_id: crate::program::NO_DEF, span: 0 }, "injected into the normalization window".into());
+        }
+        dcx.drain_reported();
+    }
+    let (prog, tcx) = program(b"#![no_std]\nfn generic<T>(x: T) -> T { x }");
+    let def = named(&prog, "generic");
+    // checked first, so the instantiation's only take is its own
+    let body = tcx.typeck(&prog, def);
+    assert!(body.errors.is_empty(), "{:?}", body.errors);
+    let state = EvalState::new();
+    let cx = EvalCx::new(&prog, &tcx, TypingEnv::fully_monomorphized(&prog), &state);
+    crate::infer::diagnostics::BEFORE_TAKE.with(|h| h.set(Some(report_and_drain)));
+    let instantiated = crate::typeck::try_instantiate_body(&cx, &prog, &tcx, def, &[tcx.tys.u8_]);
+    crate::infer::diagnostics::BEFORE_TAKE.with(|h| h.set(None));
+    assert_eq!(TAKES.with(|t| t.get()), 1, "the instantiation's own take is the only one in the window");
+    let instantiated = instantiated.unwrap();
+    assert!(!instantiated.errors.is_empty(), "a drained error must not leave the instantiated body clean");
+}
+
+/// SYNTHETIC: no program is known whose only error reaches the session log inside the borrow
+/// check's window. The hook reports an error there and drains it, as a session drain would have.
+#[test]
+fn a_drained_error_never_leaves_the_borrow_check_clean() {
+    use crate::next_solver::fulfill::ObligationCause;
+    thread_local! { static TAKES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) }; }
+    fn report_and_drain(dcx: &crate::infer::diagnostics::DiagCtxt) {
+        if TAKES.with(|t| { t.set(t.get() + 1); t.get() }) == 1 {
+            dcx.report(ObligationCause { body_id: crate::program::NO_DEF, span: 0 }, "injected into the borrow check's window".into());
+        }
+        dcx.drain_reported();
+    }
+    let (prog, tcx) = program(b"#![no_std]\nfn plain(x: u8) -> u8 { x }");
+    // checked first, so the borrow check's only take is its own
+    let body = tcx.typeck(&prog, named(&prog, "plain"));
+    assert!(body.errors.is_empty(), "{:?}", body.errors);
+    let state = EvalState::new();
+    let cx = EvalCx::new(&prog, &tcx, TypingEnv::fully_monomorphized(&prog), &state);
+    crate::infer::diagnostics::BEFORE_TAKE.with(|h| h.set(Some(report_and_drain)));
+    let verdict = crate::borrowck::check_body(&cx, &prog, &tcx, &body);
+    crate::infer::diagnostics::BEFORE_TAKE.with(|h| h.set(None));
+    assert_eq!(TAKES.with(|t| t.get()), 1, "the borrow check's own take is the only one in the window");
+    assert!(!verdict.errors.is_empty(), "a drained error must not leave the borrow check clean");
+}
