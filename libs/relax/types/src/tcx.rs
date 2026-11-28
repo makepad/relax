@@ -1685,7 +1685,7 @@ impl Tcx {
             diagnostics.set(Some(cx.errors().take_since(checkpoint)));
             Box::new(parts)
         }), |parts| {
-            let (errors, warnings) = diagnostics.take().unwrap_or_default();
+            let crate::infer::diagnostics::Taken { errors, warnings, drained: _ } = diagnostics.take().unwrap_or_default();
             for error in errors {
                 let owner = if error.cause.body_id == NO_DEF { d } else { error.cause.body_id };
                 parts.errors.push(prog.record_error(prog.def(owner).file, error.cause.span, "signature", error.message));
@@ -2411,7 +2411,7 @@ impl Tcx {
             diagnostics.set(Some(cx.errors().take_since(checkpoint)));
             Box::new(decl)
         }), |decl| {
-            let (errors, warnings) = diagnostics.take().unwrap_or_default();
+            let crate::infer::diagnostics::Taken { errors, warnings, drained: _ } = diagnostics.take().unwrap_or_default();
             for error in errors {
                 let owner = if error.cause.body_id == NO_DEF { d } else { error.cause.body_id };
                 decl.errors.push(prog.record_error(prog.def(owner).file, error.cause.span, "signature", error.message));

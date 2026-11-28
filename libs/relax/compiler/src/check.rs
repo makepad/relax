@@ -359,7 +359,7 @@ impl ItemErrors {
 fn with_item_diagnostics(prog: &Program, tcx: &Tcx, check: impl FnOnce() -> Vec<String>) -> ItemErrors {
     let cp = tcx.dcx.checkpoint();
     let errors = check();
-    let (reported, warnings) = tcx.dcx.take_since(cp);
+    let relax_types::infer::diagnostics::Taken { errors: reported, warnings, drained: _ } = tcx.dcx.take_since(cp);
     let reported = reported.into_iter().map(|error| {
         let cause = error.cause;
         if cause.body_id == crate::program::NO_DEF { error.message }
