@@ -545,8 +545,11 @@ impl<'a> Cx<'a> {
     /// A path pattern: a unit variant / struct, or a constant (rustc const_to_pat for the
     /// scalar types; other constants are opaque).
     fn lower_path_res(&mut self, p: PatId, d: DefId, t: TyId, pos: Option<u32>) -> Option<PIx> {
-        match self.prog.def(d).kind {
+        let def = self.prog.def(d);
+        match def.kind {
             DefKind::Variant | DefKind::Struct => {
+                let (adt, vi) = if def.kind == DefKind::Variant { (def.parent, def.sub as usize) } else { (d, 0) };
+                if self.tcx.adts.get(&adt)?.variants.get(vi)?.shape != 0 { return None; }
                 let (ctor, arity) = self.adt_ctor(t, d)?;
                 Some(self.push(ctor, Vec::new(), arity, t, pos))
             }

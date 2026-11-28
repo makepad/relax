@@ -101,6 +101,158 @@ fn bare_struct_variant_ident_is_binding_not_path_pattern() {
     assert!(!e.iter().any(|x| x.starts_with("repro::unit_ok: ")), "unit variant paths: {e:?}");
 }
 
+#[test]
+fn non_unit_path_patterns_are_refused() {
+    let (prog, tcx, user) = load("
+        pub enum Role { Host, Member(u32), Viewer { sharer: u32 }, Empty {}, EmptyTup() }
+        pub type Alias = Role;
+        pub struct Pair(pub u32);
+        pub struct Unit;
+        pub struct Braced { pub x: u32 }
+        pub type BracedAlias = Braced;
+        pub union Union { pub x: u32 }
+        pub trait Tr { type Out; fn method(); }
+        pub struct Holder;
+        impl Tr for Holder { type Out = Role; fn method() {} }
+        pub trait NonAdt { fn non_adt(self); }
+        pub fn fun(_: u32) -> Role { Role::Host }
+        pub static ST: bool = true;
+        use Role::Viewer;
+
+        impl Role {
+            pub fn make(_: u32) -> Self { Self::Host }
+            pub fn self_paths(self) {
+                match self { Self::Viewer => {}, Self::Member => {}, Self::make => {}, _ => {} }
+            }
+            pub fn self_calls(self) {
+                match self { Self::Host() => {}, Self::Viewer(x) | Self::make(x) => { let _ = x; }, _ => {} }
+            }
+            pub fn enum_self(self) { match self { Self => {} } }
+        }
+        impl Pair { pub fn pair_self(self) { match self { Self => {} } } }
+        impl Union { pub fn union_self(self) { match self { Self => {} } } }
+        impl BracedAlias { pub fn alias_self(self) { match self { Self => {} } } }
+        impl NonAdt for u32 { fn non_adt(self) { match self { Self => {} } } }
+        impl Braced {
+            pub fn braced_self(self) { match self { Self => {} } }
+            pub fn braced_call(self) { match self { Self(x) => { let _ = x; } } }
+        }
+        impl Unit { pub fn unit_call(self) { match self { Self() => {} } } }
+        pub fn relative(r: Role) {
+            match r { Alias::Viewer => {}, <Role>::Viewer => {}, <Holder as Tr>::Out::Viewer => {},
+                      Alias::Member => {}, <Role>::Member => {}, _ => {} }
+        }
+        pub fn rejected_path(r: &Role) { match r { Role::Viewer => {}, _ => {} } }
+        pub fn rejected_tuple(r: &Role) { match r { Role::Viewer(x) => { let _ = x; }, _ => {} } }
+        pub fn direct(r: Role) {
+            match r { Role::Member => {}, Role::EmptyTup => {}, Role::Empty => {}, Role::make => {}, _ => {} }
+        }
+        pub fn names(r: Role) {
+            match r { self::Viewer => {}, self::Braced => {}, self::Pair => {}, self::fun => {},
+                      Tr::method => {}, <Holder as Tr>::method => {}, self::ST => {}, _ => {} }
+        }
+        pub fn assoc_type(v: u32) { match v { Tr::Out => {}, _ => {} } }
+        pub fn qualified_type(v: u32) { match v { <Holder as Tr>::Out => {}, _ => {} } }
+        macro_rules! pass { ($p:path) => { $p }; }
+        pub fn macro_path_viewer(r: Role) { match r { pass!(Role::Viewer) => {}, _ => {} } }
+        pub fn tuple_names<const N: u32>(v: u32) {
+            match v { pass!(N) => {}, N(_) => {}, Role::Host() => {}, self::fun(_) => {}, _ => {} }
+        }
+        pub fn generic_fn(v: u32) { match v { Vec::new => {}, _ => {} } }
+        pub fn infer() { let Role::Viewer = Default::default(); }
+        pub fn assign_viewer(r: Role, mut v: u32) { Role::Viewer(v) = r; }
+        pub fn assign_method(r: Role, mut v: u32) { Role::make(v) = r; }
+        pub fn assign_fn(r: Role, v: u32) { self::fun(v) = r; }
+        pub fn assign_unit(r: Role) { Role::Host() = r; }
+        pub fn assign_braced(r: Braced, v: u32) { self::Braced(v) = r; }
+        pub fn nested_viewer(r: Role, mut v: u32, mut x: u32) { (Role::Viewer(v), x) = (r, 1); }
+        pub fn nested_fn(r: Role, v: u32, mut x: u32) { (self::fun(v), x) = (r, 1); }
+    ");
+
+    let bare_self = "E0533: expected unit struct, found self constructor `Self`";
+    let viewer = "E0533: expected unit struct, unit variant or constant, found struct variant `Role::Viewer`";
+    let viewer_call = "E0164: expected tuple struct or tuple variant, found struct variant `Role::Viewer`";
+    let invalid_lhs = "E0070: invalid left-hand side of assignment";
+    let cases: &[(&str, &[&str])] = &[
+        ("self_paths", &[
+            "E0533: expected unit struct, unit variant or constant, found struct variant `Self::Viewer`",
+            "E0533: expected unit struct, unit variant or constant, found tuple variant `Self::Member`",
+            "E0533: expected unit struct, unit variant or constant, found associated function `Self::make`",
+        ]),
+        ("self_calls", &[
+            "E0164: expected tuple struct or tuple variant, found unit variant `Self::Host`",
+            "E0164: expected tuple struct or tuple variant, found struct variant `Self::Viewer`",
+            "E0164: expected tuple struct or tuple variant, found associated function `Self::make`",
+        ]),
+        ("pair_self", &[bare_self]), ("braced_self", &[bare_self]), ("alias_self", &[bare_self]),
+        ("enum_self", &[bare_self]), ("union_self", &[bare_self]), ("non_adt", &[bare_self]),
+        ("unit_call", &["E0164: expected tuple struct or tuple variant, found unit struct `Self`"]),
+        ("braced_call", &[
+            "error: the `Self` constructor can only be used with tuple or unit structs",
+            "E0164: expected tuple struct or tuple variant, found self constructor `Self`",
+        ]),
+        ("relative", &[
+            "E0533: expected unit struct, unit variant or constant, found struct variant `Alias::Viewer`",
+            viewer,
+            "E0533: expected unit struct, unit variant or constant, found struct variant `<<Holder as Tr>::Out>::Viewer`",
+            "E0533: expected unit struct, unit variant or constant, found tuple variant `Alias::Member`",
+            "E0533: expected unit struct, unit variant or constant, found tuple variant `Role::Member`",
+        ]),
+        ("rejected_path", &[viewer]), ("rejected_tuple", &[viewer_call]),
+        ("macro_path_viewer", &[viewer]),
+        ("direct", &[
+            "E0532: expected unit struct, unit variant or constant, found tuple variant `Role::Member`",
+            "E0532: expected unit struct, unit variant or constant, found tuple variant `Role::EmptyTup`",
+            "E0533: expected unit struct, unit variant or constant, found struct variant `Role::Empty`",
+            "E0533: expected unit struct, unit variant or constant, found associated function `Role::make`",
+        ]),
+        ("names", &[
+            "E0532: cannot find unit struct, unit variant or constant `Viewer` in module `self`",
+            "E0532: cannot find unit struct, unit variant or constant `Braced` in module `self`",
+            "E0532: expected unit struct, unit variant or constant, found tuple struct `self::Pair`",
+            "E0532: expected unit struct, unit variant or constant, found function `self::fun`",
+            "E0532: expected unit struct, unit variant or constant, found associated function `Tr::method`",
+            "E0532: expected unit struct, unit variant or constant, found associated function `Tr::method`",
+            "E0532: expected unit struct, unit variant or constant, found static `self::ST`",
+        ]),
+        ("assoc_type", &["E0782: expected a type, found a trait"]),
+        ("qualified_type", &["E0575: cannot find method or associated constant `Out` in trait `Tr`"]),
+        ("tuple_names", &[
+            "E0532: expected unit struct, unit variant or constant, found const parameter `N`",
+            "E0532: expected tuple struct or tuple variant, found const parameter `N`",
+            "E0532: expected tuple struct or tuple variant, found unit variant `Role::Host`",
+            "E0532: expected a pattern, found a function call",
+        ]),
+        ("generic_fn", &["E0533: expected unit struct, unit variant or constant, found associated function `Vec::new`"]),
+        ("infer", &[viewer]),
+        ("assign_viewer", &[viewer_call]), ("nested_viewer", &[viewer_call]),
+        ("assign_method", &["E0164: expected tuple struct or tuple variant, found associated function `Role::make`"]),
+        ("assign_fn", &[invalid_lhs]), ("nested_fn", &[invalid_lhs]),
+        ("assign_unit", &["E0618: expected function", invalid_lhs]),
+        ("assign_braced", &["E0425: cannot find function, tuple struct or tuple variant", invalid_lhs]),
+    ];
+    let owners: Vec<_> = crate::borrowck::body::owners(&prog).filter(|o| prog.def(o.owner).krate == user).collect();
+    for &(name, expected) in cases {
+        let owner = owners.iter().find(|o| prog.name(o.owner) == name).unwrap_or_else(|| panic!("missing body: {name}"));
+        let body = tcx.typeck(&prog, owner.owner);
+        let mut errors: Vec<_> = body.errors.iter().collect();
+        for message in expected {
+            let index = errors.iter().position(|e| e.contains(*message))
+                .unwrap_or_else(|| panic!("{name}: missing {message}, got {:?}", body.errors));
+            errors.remove(index);
+        }
+        assert!(errors.is_empty(), "{name}: unexpected diagnostics: {errors:?}");
+
+        if matches!(name, "rejected_path" | "rejected_tuple") {
+            assert!(body.pat_res.iter().any(|(_, r)| *r == crate::typeck::Res::Err), "{name}: missing error resolution");
+            assert!(body.pat_derefs.is_empty(), "{name}: invalid pattern peeled the reference");
+            assert!(body.pat_discriminant_reads.is_empty(), "{name}: invalid pattern read a tag");
+            let analysis = crate::pattern_analysis::check_body(&prog, &tcx, &body);
+            assert!(analysis.errors.is_empty(), "{name}: {:?}", analysis.errors);
+        }
+    }
+}
+
 /// `let _ = *r;` mentions the place behind `r` without using its value. Going through the `Deref` reads the
 /// pointer `r`, so with `r` never initialized it is E0381, as an assignment through it would give. A mention
 /// without a `Deref` reads nothing and stays accepted.
