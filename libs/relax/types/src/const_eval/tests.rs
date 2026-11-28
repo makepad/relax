@@ -23,6 +23,39 @@ fn leaf(result: Result<ValTree, ErrorHandled>, size: u8) -> Result<u128, ErrorHa
     result.map(|value| value.try_to_leaf().expect("expected scalar valtree").to_bits(size))
 }
 
+#[test]
+fn aliased_scalar_folds_and_unnormalized_aliases_do_not_report_e0080() {
+    let (prog, tcx) = program(br#"#![no_std]
+        trait Tr { type A; }
+        impl Tr for () { type A = bool; }
+        const OK_ALIAS: <() as Tr>::A = true;
+
+        trait Unimpl { type A; }
+        const BAD_ALIAS: <() as Unimpl>::A = true;
+
+        trait Unsized { type Out; }
+        impl Unsized for str {}
+        const RIGID_ALIAS: <str as Unsized>::Out = loop {};
+
+        trait Id { type Out; }
+        struct S<T>(T);
+        impl<T> Id for S<T> { type Out = T; }
+        impl<T> S<T> { const GENERIC_ALIAS: <S<T> as Id>::Out = loop {}; }
+    "#);
+    let env = TypingEnv::fully_monomorphized(&prog);
+    let ok = named(&prog, "OK_ALIAS");
+    assert_eq!(leaf(tcx.const_eval_resolve(&prog, env, ok, &[]), 1), Ok(1), "OK_ALIAS");
+    assert!(fold_without_execution(&tcx, &prog, env, ok).is_none(), "fold-only evaluation resolved the projection");
+    for name in ["BAD_ALIAS", "RIGID_ALIAS"] {
+        let result = tcx.const_eval_resolve(&prog, env, named(&prog, name), &[]);
+        assert!(matches!(result, Err(ErrorHandled::Reported(ValTreeCreationError::NonSupportedType(_)))), "{name}: {result:?}");
+    }
+    let args = [GenericArg::Type(tcx.tys.intern(TyKind::Param(0)))];
+    let result = tcx.const_eval_resolve(&prog, env, named(&prog, "GENERIC_ALIAS"), &args);
+    assert_eq!(result, Err(ErrorHandled::TooGeneric), "GENERIC_ALIAS");
+    assert_eq!(tcx.dcx.err_count(), 0, "unexpected constant evaluation diagnostic");
+}
+
 // Folding keeps the declared integer width and signedness.
 #[test]
 fn arch_n01_evaluator_wide_literal_control() {

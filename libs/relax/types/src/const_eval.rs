@@ -103,6 +103,27 @@ fn fold_to_valtree(tcx: &Tcx, prog: &Program, key: &ConstEvalKey, fold_only: boo
     state.const_generic_frame.replace(Some((env, compact)));
     let Ok(ty) = tcx.type_of(prog, key.def) else { return Folded::Value(Err(evaluation_error())) };
     let ty = tcx.instantiate_ty(prog, key.def, &key.args, ty);
+    let ty = if !fold_only && matches!(tcx.tys.kind(ty), TyKind::Alias(..)) {
+        match tcx.try_normalize_erasing_regions(prog, key.typing_env, ty) {
+            Ok(norm) => norm,
+            Err(_) => {
+                if tcx.tys.flags(ty).intersects(crate::types::TypeFlags::HAS_TY_PARAM) {
+                    return Folded::Value(Err(ErrorHandled::TooGeneric));
+                }
+                return Folded::Value(Err(ErrorHandled::Reported(ValTreeCreationError::NonSupportedType(ty))));
+            }
+        }
+    } else {
+        ty
+    };
+    if !fold_only {
+        if tcx.tys.flags(ty).intersects(crate::types::TypeFlags::HAS_TY_PARAM) {
+            return Folded::Value(Err(ErrorHandled::TooGeneric));
+        }
+        if matches!(tcx.tys.kind(ty), TyKind::Alias(..)) && matches!(key.typing_env.mode, crate::tcx::TypingMode::PostAnalysis) {
+            return Folded::Value(Err(ErrorHandled::Reported(ValTreeCreationError::NonSupportedType(ty))));
+        }
+    }
     let value = crate::const_fold::eval_query_expr(&cx, prog, tcx, def.file, def.scope, body, ty);
     let value = match value {
         Some(value) => value,

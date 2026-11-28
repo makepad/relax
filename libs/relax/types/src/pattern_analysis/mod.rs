@@ -715,14 +715,14 @@ impl<'a> Cx<'a> {
         Some(leaf.to_bits(leaf.size()))
     }
 
-    /// Evaluate constant `d` using the resolution arguments under `key`. The evaluator walks
-    /// only the active fields. An unsupported value returns None without an E0080, so
-    /// `lower_path_res` can diagnose the constant pattern using the interpreter.
+    /// Evaluate constant `d` using the resolution arguments under `key` at the pattern's
+    /// normalized type `t`. Writeback can resolve a projection or const-item array length
+    /// in `t` even when the declared type still carries the alias. The evaluator normalizes
+    /// the declared type. An alias or type parameter remaining in `t` keeps the pattern
+    /// opaque. An unsupported value returns None without an E0080 so `lower_path_res` can
+    /// diagnose the constant pattern using the interpreter.
     fn const_value(&self, d: DefId, key: u32, t: TyId) -> Option<crate::consts::ValTree> {
-        let declared = self.tcx.type_of(self.prog, d).ok()?;
-        if self.tcx.tys.flags(declared).intersects(TypeFlags::HAS_ALIAS)
-            || self.tcx.tys.flags(t).intersects(TypeFlags::HAS_ALIAS | TypeFlags::HAS_TY_PARAM)
-        {
+        if self.tcx.tys.flags(t).intersects(TypeFlags::HAS_ALIAS | TypeFlags::HAS_TY_PARAM) {
             return None;
         }
         let args: Vec<crate::consts::GenericArg> = match self.body.res_args.get(&key) {
