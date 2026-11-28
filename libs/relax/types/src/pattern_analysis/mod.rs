@@ -712,11 +712,14 @@ impl<'a> Cx<'a> {
         Some(leaf.to_bits(leaf.size()))
     }
 
-    /// The value of constant `d` (resolution args under `key`) of type `t`: only for a
-    /// constant declared with that type (no alias for the evaluator to normalize).
+    /// Evaluate constant `d` using the resolution arguments under `key`. The evaluator walks
+    /// only the active fields. An unsupported value returns None without an E0080, so
+    /// `lower_path_res` can diagnose the constant pattern using the interpreter.
     fn const_value(&self, d: DefId, key: u32, t: TyId) -> Option<crate::consts::ValTree> {
         let declared = self.tcx.type_of(self.prog, d).ok()?;
-        if self.tcx.tys.flags(declared).intersects(TypeFlags::HAS_ALIAS) || self.tcx.tys.flags(t).intersects(TypeFlags::HAS_ALIAS) || !self.valtree_type(t, 0) {
+        if self.tcx.tys.flags(declared).intersects(TypeFlags::HAS_ALIAS)
+            || self.tcx.tys.flags(t).intersects(TypeFlags::HAS_ALIAS | TypeFlags::HAS_TY_PARAM)
+        {
             return None;
         }
         let args: Vec<crate::consts::GenericArg> = match self.body.res_args.get(&key) {
@@ -738,30 +741,6 @@ impl<'a> Cx<'a> {
         }
         let env = TypingEnv { mode: crate::tcx::TypingMode::PostAnalysis, ..self.env };
         self.tcx.const_eval_resolve(self.prog, env, d, &args).ok()
-    }
-
-    /// Whether a value of type `t` has a value tree (valtrees.rs: no raw pointers, unions,
-    /// trait objects, ..): a constant of another type is opaque to the analysis, never
-    /// evaluated for it (a failed evaluation would be reported as E0080).
-    fn valtree_type(&self, t: TyId, depth: u32) -> bool {
-        if depth > 16 {
-            return false;
-        }
-        match self.kind(t) {
-            TyKind::Bool | TyKind::Char | TyKind::Int(_) | TyKind::Float(_) | TyKind::Str => true,
-            TyKind::Ref(_, i, _) => self.valtree_type(i, depth + 1),
-            TyKind::Array(e, _) | TyKind::Slice(e) => self.valtree_type(e, depth + 1),
-            TyKind::Tuple(l) => self.tcx.tys.list(l).iter().all(|x| self.valtree_type(*x, depth + 1)),
-            TyKind::Adt(d, args, _) => {
-                let Some(a) = self.tcx.adts.get(&d) else { return false };
-                use crate::tcx::AdtFlags;
-                if a.is_union || [AdtFlags::IS_MANUALLY_DROP, AdtFlags::IS_UNSAFE_CELL, AdtFlags::IS_UNSAFE_PINNED, AdtFlags::IS_BOX].iter().any(|f| a.flags.contains(*f)) {
-                    return false;
-                }
-                (0..a.variants.len()).all(|vi| self.variant_field_tys(d, vi as u32, args).into_iter().all(|ft| self.valtree_type(ft, depth + 1)))
-            }
-            _ => false,
-        }
     }
 
     /// A constant's value as a pattern (const_to_pat.rs valtree_to_pat); None: a value the

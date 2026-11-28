@@ -6300,6 +6300,12 @@ fn const_eval_to_valtree(context: usize, _env: crate::tcx::TypingEnv, def: DefId
     }
     let ty = u.tcx.type_of(&u.prog, def).map_err(|_| evaluation_error())?;
     let ty = u.tcx.instantiate_ty(&u.prog, def, args, ty);
+    let ty = if u.tcx.tys.flags(ty).intersects(crate::types::TypeFlags::HAS_ALIAS) {
+        u.tcx.try_normalize_erasing_regions(&u.prog, crate::tcx::TypingEnv::fully_monomorphized(&u.prog), ty)
+            .map_err(|_| ErrorHandled::Reported(relax_types::const_eval::ValTreeCreationError::NonSupportedType(ty)))?
+    } else {
+        ty
+    };
     // lowering ahead (off the owner): a constant the owner evaluated, from the shared table (the
     // take checks it as const_addr_shared's); one nobody evaluated is noted for the owner's
     // const_drain, and the request below ends the lowering (NeedsUnit) until the next round. A
