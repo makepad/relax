@@ -1137,6 +1137,9 @@ pub struct Cache {
     /// carries a fresh image
     image_slots: usize,
     image_stale: usize,
+    /// Slots kept after re-keying against changed crates. Refresh the loaded image once
+    /// so the next start can use the current crate fingerprints.
+    image_rekeyed: usize,
     /// how many of `manifest`'s slots are the startup manifest's own: the rest are its session tail
     /// (the slots the last quit's run installed past them, record_tail)
     manifest_main: usize,
@@ -1172,9 +1175,16 @@ pub struct Cache {
     rec_tier: HashMap<u128, u8>,
     /// the root crate whose manifest load_manifest read
     manifest_root: Option<u32>,
+    /// Generation of the store from which this run loaded the manifest.
+    manifest_store_gen: u64,
+    /// Held from the re-key refresh decision through the write of the manifest and its sources.
+    refresh_claim: Option<std::fs::File>,
     /// slot -> the code entry its code was linked from this run (lazily or prelinked): the next
     /// manifest's image takes that entry
     linked_key: HashMap<u32, u128>,
+    /// Verified prelinks whose keys were never computed here. An exit refresh needs their
+    /// original crate dependencies to place them safely in the new image.
+    linked_crates: HashMap<u32, Vec<u32>>,
     /// slot keys by slot (fixed for a run)
     slot_keys: HashMap<u32, Option<u128>>,
     /// An unnamed image slot must not cache a failed key before its identity is decoded.
@@ -1574,6 +1584,7 @@ impl Cache {
             manifest_len: 0,
             image_slots: 0,
             image_stale: 0,
+            image_rekeyed: 0,
             manifest_main: 0,
             written_ids: None,
             image_built: None,
@@ -1588,7 +1599,10 @@ impl Cache {
             image_starts_over: 0,
             rec_tier: HashMap::new(),
             manifest_root: None,
+            manifest_store_gen: 0,
+            refresh_claim: None,
             linked_key: HashMap::new(),
+            linked_crates: HashMap::new(),
             slot_keys: HashMap::new(),
             key_waits: false,
             ordinal_in_edits: false,
@@ -2187,7 +2201,7 @@ impl Cache {
             let stale = std::mem::replace(stale, false);
             files.push((path, stale, entries));
         }
-        Some(Spill { dir: self.dir.clone(), files, shared, marks })
+        Some(Spill { dir: self.dir.clone(), files, shared, marks, refresh_claim: self.refresh_claim.take() })
     }
 
     // ------------------------------------------------------------ stable identities
@@ -3283,6 +3297,7 @@ impl Cache {
             map("data_key", &self.data_key, |_| 0),
             set("linked", &self.linked), set("missed", &self.missed),
             map("linked_key", &self.linked_key, |_| 0),
+            map("linked_crates", &self.linked_crates, |v| v.capacity() * 4),
             map("slot_keys", &self.slot_keys, |_| 0),
             map("fnkey_bytes", &self.fnkey_bytes, |v| v.as_ref().map_or(0, |b| b.capacity())),
             map("slot_by_bytes", &self.slot_by_bytes, |_| 0),
@@ -5057,6 +5072,7 @@ impl Cache {
         self.data_crates = old.data_crates.clone();
         self.linked = old.linked.clone();
         self.linked_key = old.linked_key.clone();
+        self.linked_crates = old.linked_crates.clone();
         self.base_linked = old.base_linked.clone();
         self.cert_rejected = old.cert_rejected.clone();
         self.pending_keys = old.pending_keys.clone();
@@ -5064,8 +5080,12 @@ impl Cache {
         self.pending_verdicts = old.pending_verdicts.clone();
         self.manifest_done = old.manifest_done;
         self.manifest_len = old.manifest_len;
+        self.manifest_store_gen = old.manifest_store_gen;
         self.written_ids = old.written_ids.clone();
         self.image_built = old.image_built.clone();
+        self.image_slots = old.image_slots;
+        self.image_stale = old.image_stale;
+        self.image_rekeyed = old.image_rekeyed;
         self.replaced = old.replaced.clone();
         self.collected_committed = true;
         self.stats = old.stats.clone();
@@ -5115,6 +5135,7 @@ impl Cache {
                     Some(present.min(n))
                 })();
                 if let Some(present) = ok {
+                    self.manifest_store_gen = pk.generation;
                     // the image section after the slot list (the store keeps the mapping alive)
                     if d.u32() == Some(IMAGE_MAGIC) {
                         let rest = &p[d.p..];
@@ -5174,6 +5195,30 @@ impl Cache {
         }
     }
 
+    /// Elect one writer among processes that prelinked the same image before its refresh.
+    /// A sibling may already have committed and released the lock since our manifest load.
+    fn claim_rekey_refresh(&mut self, root: u32, key: u128) -> bool {
+        if self.refresh_claim.is_some() { return true; }
+        let dir = self.dir.join("refresh");
+        if std::fs::create_dir_all(&dir).is_err() { return true; }
+        let path = dir.join(format!("{key:032x}.lock"));
+        let Ok(file) = std::fs::File::options().create(true).truncate(false).read(true).write(true).open(path) else { return true };
+        if file.try_lock().is_err() { return false; }
+        let store_path = &self.code_path[root as usize];
+        if crate::reload::edited_crates().is_empty() && crate::store::header_generation(store_path) != Some(self.manifest_store_gen) {
+            if let Some(st) = Store::open(store_path) {
+                if let Some((KIND_MANIFEST, p)) = st.get(self.manifest_sources_key(key)) {
+                    let want = self.sources_fp();
+                    if want != 0 && (D { b: p, p: 0 }).u128() == Some(want) {
+                        return false; // dropping the file releases the lock
+                    }
+                }
+            }
+        }
+        self.refresh_claim = Some(file);
+        true
+    }
+
     /// Records this run's startup manifest (the slots installed in the first seconds after main,
     /// in order, the first `present` of them before the first present; per slot its stable key
     /// encoding and the code entry it maps to, 0 when its code has none) unless the loaded one
@@ -5188,6 +5233,7 @@ impl Cache {
             self.manifest_done = true;
             self.manifest_len = order.len();
             self.discard_image_resume();
+            self.refresh_claim = None;
             return true;
         }
         let t0 = std::time::Instant::now();
@@ -5204,8 +5250,9 @@ impl Cache {
             }
         }
         let _mem = crate::memstat::tag(crate::memstat::Tag::CacheStore);
-        if self.mode == Mode::ReadOnly || order.is_empty() || (self.manifest_done && order.len() <= self.manifest_len && !self.image_rewrite && { let (r, n) = self.image_replaced(); r * 50 <= n }) {
+        if self.mode == Mode::ReadOnly || order.is_empty() || (self.manifest_done && order.len() <= self.manifest_len && !self.image_rewrite && !self.image_needs_rebuild()) {
             self.discard_image_resume();
+            self.refresh_claim = None;
             return true;
         }
         // at exit the slots' keys can no longer be made: after the mid-run manifest the exit
@@ -5214,11 +5261,13 @@ impl Cache {
         // an O2/O3 build replaced since stay lazy at the next start (image.rs img_live).
         if self.manifest_done && crate::preempt::is_stopped() {
             self.discard_image_resume();
+            self.refresh_claim = None;
             return true;
         }
         let Some(key) = self.manifest_key(root) else {
             self.manifest_done = true; self.manifest_len = order.len();
             self.discard_image_resume();
+            self.refresh_claim = None;
             return true;
         };
         // what earlier spills of this run wrote: the image takes those entries too (mid-run, as the
@@ -5226,6 +5275,14 @@ impl Cache {
         if !self.index_written(crate::preempt::is_stopped()) {
             if self.verbose { eprintln!("relax cache: startup manifest waits for the stores a spill wrote since this write began"); }
             return false;
+        }
+        if self.image_built.is_none() && self.image_rekeyed > 0 && !self.image_rewrite && self.mode == Mode::On && !self.claim_rekey_refresh(root, key) {
+            if self.verbose { eprintln!("relax cache: re-keyed startup image refresh skipped (already in flight or current on disk)"); }
+            self.image_rekeyed = 0;
+            if !self.image_needs_refresh() {
+                self.linked_crates.clear();
+                self.linked_crates.shrink_to_fit();
+            }
         }
         // an exit whose image could not replace the loaded one makes neither the keys nor the
         // image: it leaves what the guard after the build leaves (a test binary's children: 556 of
@@ -5235,6 +5292,7 @@ impl Cache {
             if self.verbose { eprintln!("relax cache: startup manifest kept: at exit an image could cover at most the {} slots this run keyed of the {} the loaded one has", k, self.image_slots); }
             self.manifest_done = true; self.manifest_len = order.len();
             self.discard_image_resume();
+            self.refresh_claim = None;
             return true;
         }
         crate::run::yield_section("manifest keys");
@@ -5244,7 +5302,7 @@ impl Cache {
         for (n, &id) in order.iter().enumerate() {
             if n % 16 == 15 && stop() { return false; }
             if let Some(b) = self.slot_bytes(u, id) {
-                let entry = match self.slot_key(u, id) {
+                let entry = match self.slot_key(u, id).or_else(|| self.recorded_key(&b)) {
                     Some(k) if self.has_index(&k) || self.pending_keys.contains(&k) => k,
                     _ => 0,
                 };
@@ -5276,25 +5334,25 @@ impl Cache {
         // to half a second of the exit, every session. The image's slots no call reached are
         // dropped once they outnumber the ones calls reached (`lean`): a start that moved on
         // prelinks no dead weight. (A loaded manifest that is not valid is not kept either.)
-        let lean = !self.startup_manifest_valid() || crate::jit::not_called_at_present() * 2 > self.image_slots;
+        let exit_refresh = crate::preempt::is_stopped() && self.image_built.is_none() && self.image_needs_refresh();
+        let lean = !self.startup_manifest_valid() || (!exit_refresh && crate::jit::not_called_at_present() * 2 > self.image_slots);
         // the same start as before (within 2%), the loaded manifest still valid and its image
         // current (within 2%, covering all but 2% of its cached slots, and not mostly slots no
         // call reached while its window was open: jit::startup_set_called): no new one
-        let (replaced, _) = self.image_replaced();
-        let image_current = !self.image_rewrite && match &self.image_built {
-            // this run's image: its slots replaced since it was built
-            Some((_, n, _)) => replaced * 50 <= *n,
-            None => self.image_slots == 0 || ((self.image_stale + replaced) * 50 <= self.image_slots && self.image_slots * 50 >= self.manifest_present_cached * 49 && !lean),
+        let image_current = !self.image_rewrite && !self.image_needs_rebuild() && match &self.image_built {
+            Some(_) => true,
+            None => self.image_slots == 0 || (self.image_slots * 50 >= self.manifest_present_cached * 49 && !lean),
         };
         if self.startup_manifest_valid() && new * 50 <= list.len() && image_current {
             self.manifest_done = true; self.manifest_len = order.len();
             self.image_kept = None;
             self.discard_image_resume();
+            self.refresh_claim = None;
             return true;
         }
         if self.verbose {
-            eprintln!("relax cache: startup manifest rewritten: valid {} (missing {}), {} new of {}, image rewrite {} (replacements without a stored entry {}, tier-ups {}; of the image's own slots {}), image slots {} stale {} cached at present {}",
-                self.startup_manifest_valid(), self.manifest_missing, new, list.len(), self.image_rewrite, self.stats.rewrite_why[0], self.stats.rewrite_why[1], replaced, self.image_slots, self.image_stale, self.manifest_present_cached);
+            eprintln!("relax cache: startup manifest rewritten: valid {} (missing {}), {} new of {}, image rewrite {} (replacements without a stored entry {}, tier-ups {}; of the image's own slots {}), image slots {} stale {} rekeyed {} cached at present {}",
+                self.startup_manifest_valid(), self.manifest_missing, new, list.len(), self.image_rewrite, self.stats.rewrite_why[0], self.stats.rewrite_why[1], self.image_replaced().0, self.image_slots, self.image_stale, self.image_rekeyed, self.manifest_present_cached);
         }
         // the union: the loaded manifest's own slots this start did not install, after this start's,
         // and the slots its image installed ahead in this run's image. A carried slot keeps its
@@ -5311,7 +5369,11 @@ impl Cache {
             for (i, b) in self.manifest[..self.manifest_main.min(self.manifest.len())].iter().enumerate() {
                 if i % 1024 == 1023 && stop() { return false; }
                 if mine.contains(&identity_hash(b)) { continue; }
-                let k = self.recorded_key(b).filter(|k| self.has_index(k) || self.pending_keys.contains(k)).unwrap_or(0);
+                let k = self.recorded_key(b).or_else(|| {
+                    if !crate::reload::edited_crates().is_empty() { return None; }
+                    let id = self.image_ids.as_ref()?.slot_of(b)?;
+                    self.slot_keys.get(&id).copied().flatten()
+                }).filter(|k| self.has_index(k) || self.pending_keys.contains(k)).unwrap_or(0);
                 carried.2 += (k == 0 && self.manifest_old_keys.get(i).is_some_and(|o| *o != 0)) as usize;
                 list.push((b.clone(), k));
                 carried.0 += 1;
@@ -5356,12 +5418,14 @@ impl Cache {
         let made = 'steps: {
         crate::run::yield_section("manifest tail");
         if stop() { break 'steps false; }
-        if crate::preempt::is_stopped() && self.image_slots > 0 && n_img * 50 < self.image_slots * 49 {
+        let live_slots = self.image_slots.saturating_sub(self.image_stale);
+        if crate::preempt::is_stopped() && live_slots > 0 && n_img * 50 < live_slots * 49 {
             if self.verbose {
                 eprintln!("relax cache: startup manifest kept: at exit the image would cover {} of the {} slots the loaded one has", n_img, self.image_slots);
             }
             self.manifest_done = true; self.manifest_len = order.len();
             self.discard_image_resume();
+            self.refresh_claim = None;
             return true;
         }
         // the entry first (the yield checks: nothing is queued before the last of them)
@@ -5418,6 +5482,8 @@ impl Cache {
         if let Some((_, _, bits)) = img.filter(|_| n_img > 0) {
             // (as built: what was replaced since counts against it)
             self.image_built = Some((built_at, n_img, bits));
+            self.linked_crates.clear();
+            self.linked_crates.shrink_to_fit();
         }
         let mut removed = 0;
         for o in gone {
@@ -5438,21 +5504,24 @@ impl Cache {
         true
     }
 
-    /// At exit: how many slots this run keyed, when that is under the 98% of the loaded image's
-    /// slots an exit's image must cover (record_manifest's guard after build_image), so no image
-    /// record_manifest builds can replace the loaded one. Stopped and outside a record
-    /// (recording_pending), slot_key returns only its memo, and build_image takes only slots
-    /// slot_key names (its first phase, add_called): its image holds at most the memo's keyed
-    /// slots. A build resumed from a try that gave way, and an image kept from one, were made
-    /// mid-run, where a key is not always memoised (key_waits): no bound then (None), nor without
-    /// a loaded image.
+    /// Skip the exit build when it cannot cover 98% of the loaded image's live slots. At exit
+    /// a slot needs a memoised key or a verified prelink with its crate dependencies. A build
+    /// kept or resumed from mid-run could already contain slots outside that bound.
     fn exit_image_bound(&self) -> Option<usize> {
-        if !crate::preempt::is_stopped() || self.recording_pending || self.image_resume.is_some() || self.image_kept.is_some() || self.image_slots == 0 {
+        let live_slots = self.image_slots.saturating_sub(self.image_stale);
+        if !crate::preempt::is_stopped() || self.recording_pending || self.image_resume.is_some() || self.image_kept.is_some() || live_slots == 0 {
             return None;
         }
         // (one pass over the memo: a median 18 us for a test child's ~10,000 keys)
-        let keyed = self.slot_keys.values().filter(|k| k.is_some()).count();
-        (keyed * 50 < self.image_slots * 49).then_some(keyed)
+        let mut keyed = self.slot_keys.values().filter(|k| k.is_some()).count();
+        if !self.linked_crates.is_empty() && self.image_built.is_none() && self.image_needs_refresh() {
+            for id in self.linked_crates.keys() {
+                if self.linked_key.contains_key(id) && !self.slot_keys.get(id).is_some_and(Option::is_some) {
+                    keyed += 1;
+                }
+            }
+        }
+        (keyed * 50 < live_slots * 49).then_some(keyed)
     }
 
     /// The quit's record of the session (on the owner thread): the slots of this run's install
@@ -5507,13 +5576,32 @@ impl Cache {
         true
     }
 
-    /// An in-session rebuild of the startup image is due (the mid-run writes): more than 5% of its
-    /// slots had their code replaced since it was built or loaded (O2/O3 over the O1 code: the next
-    /// start leaves those lazy). A cold run tiers up for minutes after its first write.
-    pub fn image_refresh_due(&self) -> bool {
+    /// Rebuild during a manifest write if any loaded slot was re-keyed or over 2% are stale.
+    fn image_needs_rebuild(&self) -> bool {
         let (replaced, n) = self.image_replaced();
-        let since = if self.image_built.is_some() { replaced } else { self.image_stale + replaced };
-        self.manifest_done && self.mode == Mode::On && n > 0 && since * 20 > n
+        if n == 0 { return false; }
+        match &self.image_built {
+            Some(_) => replaced * 50 > n,
+            None => self.image_rekeyed > 0 || (self.image_stale + replaced) * 50 > n,
+        }
+    }
+
+    /// Request a refresh for changed fingerprints or over 5% stale slots. Once this run
+    /// has built an image, only replacements since that build count against it.
+    pub fn image_needs_refresh(&self) -> bool {
+        if self.mode != Mode::On || self.keys_moved != 0 || !self.layout_edited.is_empty() {
+            return false;
+        }
+        match &self.image_built {
+            Some((at, n, bits)) => *n > 0 && self.replaced_in(bits, *at) * 20 > *n,
+            None => self.image_slots > 0 && (self.image_rekeyed > 0
+                || (self.image_stale + self.replaced_in(self.loaded_bits(), 0)) * 20 > self.image_slots),
+        }
+    }
+
+    /// The session already wrote its manifest and needs another image.
+    pub fn image_refresh_due(&self) -> bool {
+        self.manifest_done && self.image_needs_refresh()
     }
 
     /// The startup image's slots replaced this run, and its slots: this run's image, those
@@ -5572,6 +5660,7 @@ impl Cache {
     }
 
     pub fn flush(&mut self) -> Result<usize, String> {
+        let _claim = self.refresh_claim.take();
         if let Some(c) = self.census().filter(|_| self.verbose) {
             eprintln!("relax cache: census: {c}");
         }
@@ -5930,6 +6019,7 @@ fn resolved_spelling(dir: &str) -> String {
 /// Entries taken out of a running cache (Cache::spill_take), written off the unit.
 pub struct Spill {
     dir: PathBuf,
+    refresh_claim: Option<std::fs::File>,
     files: Vec<(PathBuf, bool, Vec<NewEntry>)>,
     /// batches of the shared code stores, written after `files`
     shared: Vec<SharedSpill>,
@@ -5998,6 +6088,7 @@ impl Spill {
 
     /// The caller holds SPILL_IO exclusively, or shared plus the cold store's lock.
     fn write_locked(self, _guard: &impl std::ops::Deref<Target = ()>, late: &[(String, u8, String, u128)]) -> Result<usize, String> {
+        let _claim = self.refresh_claim;
         pack::ensure_private_dir(&self.dir)?;
         let mut n = 0;
         for (path, stale, mut entries) in self.files {
@@ -8030,7 +8121,7 @@ pub(crate) fn record_added_crates(prog: &crate::program::Program, dir: &std::pat
         let lock = front_store_lock(&path);
         let _store = lock.lock().unwrap_or_else(|e| e.into_inner());
         let guard = spill_io_read();
-        Spill { dir: dir.to_owned(), files: vec![(path, false, entries)], shared: Vec::new(), marks: marks.clone() }.write_locked(&guard, &late)?;
+        Spill { dir: dir.to_owned(), files: vec![(path, false, entries)], shared: Vec::new(), marks: marks.clone(), refresh_claim: None }.write_locked(&guard, &late)?;
     }
     let mut probes: std::collections::BTreeMap<String, bool> = base.probes.iter().cloned().collect();
     for (p, exists) in &prog.module_probes { probes.entry(p.clone()).or_insert(*exists); }
@@ -9279,7 +9370,7 @@ fn write_front_record(job: FrontWrite) -> Result<Option<usize>, String> {
     let _profile = crate::load_profile::span(profile, "front-record-write", name);
     // Keep code/old parts, even if the boot record was rejected. Cache::open decides
     // staleness after loading; an early write must not retire still-linkable code.
-    Spill { dir, files: vec![(path.clone(), false, entries)], shared: Vec::new(), marks }.write_locked(&guard, &late)?;
+    Spill { dir, files: vec![(path.clone(), false, entries)], shared: Vec::new(), marks, refresh_claim: None }.write_locked(&guard, &late)?;
     Ok(recorded.then_some(ci))
 }
 
@@ -10699,6 +10790,216 @@ mod data_tests {
             let (_, entry) = self.pending.iter().rev().find(|(_, e)| e.kind == KIND_MANIFEST && e.key == key)?;
             Some(&entry.payload)
         }
+    }
+
+    fn image_test_start<'a>(dir: &std::path::Path, units: &'a mut Vec<Box<Unit>>) -> (&'a mut Unit, u32) {
+        let mut session = crate::Session::default();
+        session.options.tier1 = false;
+        session.options.tyck_ahead = false;
+        let session = std::sync::Arc::new(session);
+        let mut prog = crate::program::Program::new(&session);
+        let cfg = crate::cfg::CfgSet::host(&session, &[]);
+        let dep = prog.load_crate("unchanged", dir.join("unchanged.rs").to_str().unwrap(), 2021, cfg.clone(), vec![]).unwrap();
+        let deps = vec![(prog.syms.intern("unchanged"), dep)];
+        let app = prog.load_crate("app", dir.join("app.rs").to_str().unwrap(), 2021, cfg, deps).unwrap();
+        let mut tcx = crate::tcx::Tcx::new();
+        tcx.collect(&prog);
+        // Dropping any Unit stops key queries for every later start in the process.
+        units.push(Unit::new(prog, tcx, 0));
+        (units.last_mut().unwrap(), app)
+    }
+
+    fn image_test_slot(u: &Unit, name: &str) -> u32 {
+        let def = (0..u.prog.defs.len() as u32).map(DefId).find(|&d| u.prog.name(d) == name).unwrap();
+        u.fn_id(FnKey::Inst(def, vec![]))
+    }
+
+    fn image_test_record(dir: &std::path::Path, u: &Unit, app: u32, order: &[u32]) {
+        let mut cache = open_test_cache(u, &dir.join("cache"));
+        for &id in order {
+            cache.record(u, id, &[0xc3], &[], &[]);
+        }
+        assert!(cache.record_manifest(u, app, order, order.len(), &|| false));
+        assert_eq!(cache.image_built.as_ref().map(|b| b.1), Some(order.len()));
+        cache.flush().unwrap();
+    }
+
+    fn image_test_prelink(dir: &std::path::Path, u: &mut Unit, app: u32) -> (Box<CacheCell>, Vec<u32>) {
+        let mut cache = open_test_cache(u, &dir.join("cache"));
+        cache.load_manifest(app);
+        u.cache = Some(Box::new(CacheCell::new(cache)));
+        let mut order = Vec::new();
+        let placed = unsafe { prelink_unit(u, &mut |u, slots| {
+            for s in slots {
+                u.fns[s.id as usize].compiled = true;
+                order.push(s.id);
+            }
+        }) };
+        assert_eq!(placed, order.len());
+        (u.cache.take().unwrap(), order)
+    }
+
+    #[test]
+    fn rekeyed_startup_image_refreshes_and_next_start_rekeys_zero() {
+        isolated_test!(rekeyed_startup_image_refreshes_and_next_start_rekeys_zero);
+        let _unit = CACHE_UNIT.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("relax-image-rekey-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = "#![no_std]\nextern crate unchanged;\npub fn app_fn() -> u32 { unchanged::stable_fn() + 1 }\npub fn edited_fn() -> u32 { 10 }\n";
+        std::fs::write(dir.join("unchanged.rs"), "#![no_std]\npub fn stable_fn() -> u32 { 1 }\n").unwrap();
+        std::fs::write(dir.join("app.rs"), source).unwrap();
+        let mut units = Vec::new();
+        let (u, app) = image_test_start(&dir, &mut units);
+        let order = ["stable_fn", "app_fn", "edited_fn"].map(|name| image_test_slot(u, name));
+        image_test_record(&dir, u, app, &order);
+
+        let commented = format!("{source}\n// trailing comment\n");
+        std::fs::write(dir.join("app.rs"), &commented).unwrap();
+        let (u, app) = image_test_start(&dir, &mut units);
+        let (mut cache, order) = image_test_prelink(&dir, u, app);
+        assert_eq!(order.len(), 3);
+        assert_eq!(cache.stats.prelink_rekeyed, 2, "both app slots re-key after the comment edit");
+        assert_eq!(cache.image_rekeyed, 2);
+        assert!(cache.image_needs_refresh());
+        cache.manifest_done = true;
+        cache.manifest_len = order.len();
+        assert!(cache.image_refresh_due(), "a completed mid-run manifest must refresh");
+        assert!(cache.record_manifest(u, app, &order, order.len(), &|| false));
+        cache.flush().unwrap();
+        assert_eq!(cache.image_built.as_ref().map(|b| b.1), Some(3));
+        assert!(!cache.image_refresh_due());
+        assert!(!cache.image_needs_refresh());
+        assert!(cache.linked_crates.is_empty());
+        drop(cache);
+
+        let (u, app) = image_test_start(&dir, &mut units);
+        let (cache, order) = image_test_prelink(&dir, u, app);
+        assert_eq!(order.len(), 3);
+        assert_eq!(cache.stats.prelink_rekeyed, 0, "the next start uses the refreshed fingerprints");
+        assert_eq!(cache.stats.prelink_changed, 0);
+        assert!(!cache.image_needs_refresh());
+        drop(cache);
+
+        std::fs::write(dir.join("app.rs"), commented.replace("{ 10 }", "{ 20 }")).unwrap();
+        let (u, app) = image_test_start(&dir, &mut units);
+        let (mut cache, mut order) = image_test_prelink(&dir, u, app);
+        assert_eq!(order.len(), 2);
+        assert_eq!(cache.stats.prelink_rekeyed, 1);
+        assert_eq!(cache.stats.prelink_changed, 1);
+        let edited = image_test_slot(u, "edited_fn");
+        assert!(!u.fns[edited as usize].compiled, "the previous body stayed lazy");
+        cache.record(u, edited, &[0x90, 0xc3], &[], &[]);
+        u.fns[edited as usize].compiled = true;
+        order.push(edited);
+        assert!(cache.record_manifest(u, app, &order, order.len(), &|| false));
+        cache.flush().unwrap();
+        drop(cache);
+
+        let (u, app) = image_test_start(&dir, &mut units);
+        let (mut cache, order) = image_test_prelink(&dir, u, app);
+        assert_eq!(order.len(), 3);
+        assert_eq!(cache.stats.prelink_rekeyed, 0);
+        assert_eq!(cache.stats.prelink_changed, 0);
+        let edited = image_test_slot(u, "edited_fn");
+        let key = cache.slot_key(u, edited).expect("the edited body's key");
+        assert_eq!(cache.linked_key.get(&edited), Some(&key));
+        drop(cache);
+        drop(units);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Cold image with 40 dependency slots and two app slots, then a comment edit to the app.
+    fn exit_image_fixture(units: &mut Vec<Box<Unit>>) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("relax-image-exit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut dep = String::from("#![no_std]\n");
+        for i in 0..40 { dep.push_str(&format!("pub fn f{i}() -> u32 {{ {i} }}\n")); }
+        let app_src = "#![no_std]\nextern crate unchanged;\npub fn a0() -> u32 { 0 }\npub fn a1() -> u32 { 1 }\n";
+        std::fs::write(dir.join("unchanged.rs"), dep).unwrap();
+        std::fs::write(dir.join("app.rs"), app_src).unwrap();
+        let (u, app) = image_test_start(&dir, units);
+        let mut order: Vec<_> = (0..40).map(|i| image_test_slot(u, &format!("f{i}"))).collect();
+        order.extend(["a0", "a1"].map(|name| image_test_slot(u, name)));
+        image_test_record(&dir, u, app, &order);
+        std::fs::write(dir.join("app.rs"), format!("{app_src}\n// trailing comment\n")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn rekeyed_startup_image_refreshes_at_exit_keeping_unchanged_slots() {
+        isolated_test!(rekeyed_startup_image_refreshes_at_exit_keeping_unchanged_slots);
+        let _unit = CACHE_UNIT.lock().unwrap_or_else(|e| e.into_inner());
+        let mut units = Vec::new();
+        let dir = exit_image_fixture(&mut units);
+        let (u, app) = image_test_start(&dir, &mut units);
+        let (mut cache, order) = image_test_prelink(&dir, u, app);
+        assert_eq!(order.len(), 42);
+        assert_eq!(cache.stats.prelink_rekeyed, 2);
+        assert!(cache.slot_keys.len() < 40);
+        assert_eq!(cache.linked_crates.len(), 40);
+        crate::preempt::stop_all();
+        assert!(cache.record_manifest(u, app, &order, order.len(), &|| false));
+        cache.flush().unwrap();
+        assert_eq!(cache.image_built.as_ref().map(|b| b.1), Some(42));
+        assert!(cache.linked_crates.is_empty());
+        drop(cache);
+
+        let (u, app) = image_test_start(&dir, &mut units);
+        let (cache, order) = image_test_prelink(&dir, u, app);
+        assert_eq!(order.len(), 42);
+        assert_eq!(cache.stats.prelink_rekeyed, 0);
+        assert_eq!(cache.stats.prelink_changed, 0);
+        assert!(cache.manifest_key_crates.is_none(), "the manifest carries the edited sources' fingerprint");
+        drop(cache);
+
+        let path = dir.join("unchanged.rs");
+        let dep = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(path, format!("{dep}\n// dependency edit\n")).unwrap();
+        let (u, app) = image_test_start(&dir, &mut units);
+        let (cache, order) = image_test_prelink(&dir, u, app);
+        assert!(cache.has_startup_image());
+        assert!(cache.startup_manifest_valid());
+        assert_eq!(order.len(), 0, "every slot depends on the edited crate and re-keying is stopped");
+        assert_eq!(cache.stats.prelink_changed, 42);
+        assert_eq!(cache.stats.prelink_failed, 0);
+        drop(cache);
+        drop(units);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn rekeyed_startup_image_refreshes_once_across_concurrent_exits() {
+        isolated_test!(rekeyed_startup_image_refreshes_once_across_concurrent_exits);
+        let _unit = CACHE_UNIT.lock().unwrap_or_else(|e| e.into_inner());
+        let mut units = Vec::new();
+        let dir = exit_image_fixture(&mut units);
+        let mut start = || {
+            let (u, app) = image_test_start(&dir, &mut units);
+            let (cache, order) = image_test_prelink(&dir, u, app);
+            assert_eq!(order.len(), 42);
+            assert_eq!(cache.stats.prelink_rekeyed, 2);
+            (cache, app, order)
+        };
+        let (mut a, app_a, order_a) = start();
+        let (mut b, app_b, order_b) = start();
+        let (mut c, app_c, order_c) = start();
+        crate::preempt::stop_all();
+        assert!(a.record_manifest(&units[1], app_a, &order_a, order_a.len(), &|| false));
+        assert_eq!(a.image_built.as_ref().map(|b| b.1), Some(42));
+        assert!(a.refresh_claim.is_some());
+        let skip = |cache: &mut Cache, u: &Unit, app, order: &[u32]| {
+            assert!(cache.record_manifest(u, app, order, order.len(), &|| false));
+            assert_eq!(cache.image_reads.load(std::sync::atomic::Ordering::Relaxed), 0);
+            assert!(cache.image_built.is_none());
+            assert!(cache.pending_manifest_payload(app).is_none());
+        };
+        skip(&mut b, &units[2], app_b, &order_b);
+        a.flush().unwrap();
+        assert!(a.refresh_claim.is_none());
+        skip(&mut c, &units[3], app_c, &order_c);
+        drop((a, b, c));
+        drop(units);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
