@@ -754,7 +754,9 @@ fn target_check_child() {
 /// A wasm32 check beside a host check in one cache keeps its own 32-bit collected image: the first
 /// wasm32 check does not restore the host's image, a wasm32 check after an edit restores its own with
 /// 4-byte pointers, and a 64-bit transmute checked from it is still E0512. One workspace and cache
-/// for the four checks; each assertion names its step.
+/// for the four checks; each assertion names its step. Where the web target's linear memory can
+/// be reserved only (`web::activate`, macOS and Linux): a wasm32 check elsewhere stops at it.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[test]
 fn wasm32_checks_restore_their_32bit_image_beside_a_host_check() {
     if std::env::var_os(CHILD).is_some() || std::env::var_os(EARLY_CHILD).is_some()
