@@ -1432,12 +1432,12 @@ impl Program {
                 &ahead.defs, &ahead.aliases, &ahead.mods, &ahead.macro_use, &externs);
         }
         if let Some(pool) = &self.pool { pool.start_parsing(ci, self.macros.clone()); }
-        if !ahead.prelexed.is_empty() {
+        let pre_derives = if !ahead.prelexed.is_empty() {
             // This raw-source optimization has no token-origin context. Lowered files
             // expand derives inside their normal token-input parse instead.
             let files: Vec<(&str, &[u8], &[crate::lexer::Tok])> = ahead.prelexed.iter().map(|(p, s, t)| (p.as_str(), &s[..], &t[..])).collect();
-            crate::builtins::pre_expand_derives(&kname, &files, &self.crates[krate as usize].cfg, edition);
-        }
+            Some(crate::builtins::pre_expand_derives(&kname, &files, &self.crates[krate as usize].cfg, edition))
+        } else { None };
         for (p, s, t) in ahead.prelexed {
             self.prelexed.insert(p, (s, t));
         }
@@ -1468,6 +1468,7 @@ impl Program {
             pool.cancel(ahead.idx, &unused);
         }
         self.prelexed.clear();
+        drop(pre_derives);
         if self.ahead.is_empty() {
             // every preloaded crate is in: no worker thread outlives the load (a later fork)
             self.pool = None;
