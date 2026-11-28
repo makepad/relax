@@ -64,7 +64,7 @@ pub fn priority(service: &str) -> u8 {
         "input" => 3,
         "sync" => 4,
         "surface" => 5,
-        "frames" => 6,
+        "frames" | "audio" => 6,
         _ => 7,
     }
 }

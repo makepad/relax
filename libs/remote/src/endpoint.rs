@@ -41,6 +41,7 @@ pub(crate) fn service_limits(service: &str) -> ServiceLimits {
         "cmd" | "app" => (256 << 20, 8),
         "prof" | "gpuprof" => (512 << 20, 2), // sample and string tables, including GPU backfill
         "frames" => ((1 << 30) + crate::frame::MAX_PAYLOAD, 2),
+        "audio" => (crate::audio::MAX_MESSAGE, 2),
         _ => ((1 << 30) + crate::frame::MAX_PAYLOAD, 8), // whole files and transparent relays
     };
     ServiceLimits { max_message, max_channels }
