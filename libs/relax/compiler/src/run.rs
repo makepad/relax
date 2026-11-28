@@ -2270,7 +2270,13 @@ fn cmd_run_inner(sess: &std::sync::Arc<crate::Session>, args: &[String], session
     if !check && !harness && !plain_test {
         for k in crate::check::app_crates(&prog, root) { prog.crates[k as usize].validate = true; }
     }
-    let mut tcx = collected_tcx.take().unwrap_or_else(crate::tcx::Tcx::new);
+    let mut tcx = collected_tcx.take().unwrap_or_else(|| {
+        let mut t = crate::tcx::Tcx::new();
+        t.tys.ptr_bytes = prog.ptr_bytes;
+        t
+    });
+    assert_eq!(tcx.tys.ptr_bytes, prog.ptr_bytes,
+        "type context pointer width ({}) differs from program ({})", tcx.tys.ptr_bytes, prog.ptr_bytes);
     // RELAX_PERTURB: type ids shift (code must not depend on them; syms.rs reloc_sig)
     for i in 0..crate::syms::perturb(options) {
         let u8_ = tcx.tys.prim(crate::program::Prim::U8);

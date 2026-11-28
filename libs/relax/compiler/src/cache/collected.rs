@@ -526,7 +526,7 @@ impl FrontImages {
             return None;
         }
         why = "type context (Tcx)";
-        let mut tcx = Tcx::restore_collected(types, prog.files.len(), prog.crates.len())?;
+        let mut tcx = Tcx::restore_collected(types, prog.files.len(), prog.crates.len(), prog.ptr_bytes)?;
         phase("Tcx");
         if let Some(plan) = plan.as_deref() {
             why = "demand selection";

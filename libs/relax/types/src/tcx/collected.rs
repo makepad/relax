@@ -94,6 +94,8 @@ impl Tcx {
     }
 
     pub fn collect_collected_suffix(&mut self, prog: &Program, first: usize) {
+        assert_eq!(self.tys.ptr_bytes, prog.ptr_bytes,
+            "collected Tcx pointer width ({}) differs from program ({})", self.tys.ptr_bytes, prog.ptr_bytes);
         // The retained methods and traits that lost a dropped item come first: their signature
         // cells are empty again and their region contracts follow the recreated items.
         let mut defs: Vec<_> = prog.collected_recollect.iter().copied()
@@ -106,6 +108,7 @@ impl Tcx {
     }
 
     pub fn verify_collected(&self, saved_prog: &Program, prog: &Program, rebuilt: &Self) {
+        assert_eq!(self.tys.ptr_bytes, rebuilt.tys.ptr_bytes, "collected Tcx pointer width differs");
         let mut a_keys: Vec<_> = self.sigs.keys().copied().collect(); a_keys.sort_by_key(|d| d.0);
         let mut b_keys: Vec<_> = rebuilt.sigs.keys().copied().collect(); b_keys.sort_by_key(|d| d.0);
         assert_eq!(a_keys, b_keys, "collected signature definitions differ");
@@ -210,7 +213,7 @@ impl Tcx {
         let errors = self.collected_errors.as_ref()?;
         if !errors.is_empty() { return None; }
         let mut w = Vec::new();
-        7u32.put(&mut w);
+        8u32.put(&mut w);
         macro_rules! put_one {
             (errors) => { errors.put(&mut w) };
             ($f:ident) => { self.$f.put(&mut w) };
@@ -257,11 +260,13 @@ impl Tcx {
         (k == image.len()).then_some(())
     }
 
-    pub fn restore_collected(bytes: &'static [u8], files: usize, crates: usize) -> Option<Self> {
+    pub fn restore_collected(bytes: &'static [u8], files: usize, crates: usize, ptr_bytes: u32) -> Option<Self> {
         let image = crate::image::Reader::new(bytes)?;
         let mut r = Decode::new(image.bytes(0, 0)?);
-        if u32::get(&mut r)? != 7 { return None; }
-        let mut t = Self::with_types(Types::restore_collected(image.bytes(1, 1)?)?);
+        if u32::get(&mut r)? != 8 { return None; }
+        let tys = Types::restore_collected(image.bytes(1, 1)?)?;
+        if tys.ptr_bytes != ptr_bytes { return None; }
+        let mut t = Self::with_types(tys);
         macro_rules! get { ($($f:ident),+) => { $(t.$f = Codec::get(&mut r)?;)+ }; }
         fields!(get);
         if !r.bytes.is_empty() { return None; }
@@ -284,6 +289,37 @@ impl Tcx {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collected_tcx_preserves_32bit_ptr_bytes_and_rejects_width_mismatch() {
+        let session = std::sync::Arc::new(crate::Session::default());
+        let root = std::env::temp_dir().join(format!("relax-collected-width-{}-{}", std::process::id(), crate::unique_test_suffix()));
+        std::fs::create_dir(&root).unwrap();
+        let source = root.join("lib.rs");
+        std::fs::write(&source, "#![no_std]\npub struct Buf { pub bytes: [u8; 16] }").unwrap();
+        let mut prog = Program::new(&session);
+        prog.ptr_bytes = 4;
+        prog.load_crate("fixture", source.to_str().unwrap(), 2021, crate::cfg::CfgSet::host(&session, &[]), vec![]).unwrap();
+        prog.resolve_imports();
+        assert!(prog.errors.is_empty(), "{:?}", prog.errors);
+        let mut tcx = Tcx::new();
+        tcx.collect(&prog);
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(tcx.errors.is_empty(), "{:?}", tcx.errors);
+        let buf = DefId(prog.defs.iter().position(|d| prog.syms.str(d.name) == "Buf").unwrap() as u32);
+        let field_len = |tcx: &Tcx| {
+            let field = &tcx.adts[&buf].variants[0].fields[0];
+            let TyKind::Array(_, len) = tcx.tys.kind(field.ty) else { panic!("expected an array field") };
+            len.try_to_target_usize(&tcx.tys)
+        };
+        assert_eq!(field_len(&tcx), Some(16), "collected array length");
+        let bytes = Box::leak(tcx.collected_image().unwrap().into_boxed_slice());
+        let restore = |width| Tcx::restore_collected(bytes, prog.files.len(), prog.crates.len(), width);
+        assert!(restore(8).is_none(), "64-bit program accepted a 32-bit image");
+        let restored = restore(4).expect("matching 32-bit image");
+        assert_eq!(restored.tys.ptr_bytes, 4);
+        assert_eq!(field_len(&restored), Some(16), "restored array length");
+    }
 
     /// Constants lowered on another thread while images are taken: every declaration an image
     /// holds lowered has its anonymous constant's type in it (a declaration's lowering feeds it
@@ -311,7 +347,7 @@ mod tests {
         assert_eq!((decls.len(), anon_of.len()), (2000, 2000));
         // the declarations an image holds lowered, each with its constant's type
         let check = |k: usize, bytes: Vec<u8>| -> usize {
-            let restored = Tcx::restore_collected(Box::leak(bytes.into_boxed_slice()), prog.files.len(), prog.crates.len())
+            let restored = Tcx::restore_collected(Box::leak(bytes.into_boxed_slice()), prog.files.len(), prog.crates.len(), prog.ptr_bytes)
                 .unwrap_or_else(|| panic!("image {k} did not restore"));
             decls.iter().filter(|d| restored.const_tys.declaration(d).unwrap().get().is_some()).inspect(|d| {
                 assert!(restored.const_tys.fed_type(&anon_of[d]).is_some(), "image {k} holds `{}` without the type of its length", prog.def_path(**d));
@@ -373,7 +409,7 @@ mod tests {
             deps: vec![], proc_macro: false, image_deps: vec![], image_dep_names: vec![] }];
         let restored_prog = Program::restore_collected(&session, Box::leak(program_image.into_boxed_slice()), &pre,
             |_, _, _, meta| prog.file_paths.iter().position(|path| *path == meta.path).and_then(|i| crate::parser::parse_owned(&session, prog.files[i].src.to_vec(), 2021).ok())).unwrap();
-        let restored_tcx = Tcx::restore_collected(Box::leak(types_image.into_boxed_slice()), restored_prog.files.len(), restored_prog.crates.len()).unwrap();
+        let restored_tcx = Tcx::restore_collected(Box::leak(types_image.into_boxed_slice()), restored_prog.files.len(), restored_prog.crates.len(), restored_prog.ptr_bytes).unwrap();
         prog.verify_collected(&restored_prog);
         tcx.verify_collected(&prog, &restored_prog, &restored_tcx);
         // the running tables adopt the images written from them: same declarations, read in place

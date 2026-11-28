@@ -1660,7 +1660,7 @@ fn restored_images_take_live_edits() {
     let mut files: std::collections::HashMap<String, crate::parser::ParsedFile> = std::mem::take(&mut prog.files).into_iter()
         .zip(prog.file_paths.clone()).map(|(f, p)| (p, Arc::try_unwrap(f).ok().expect("unshared file"))).collect();
     let restored = Program::restore_collected(&session, program, &prog.load_recipe, |_, _, _, meta| files.remove(&meta.path)).expect("Program restore");
-    let restored_tcx = crate::tcx::Tcx::restore_collected(types, restored.files.len(), restored.crates.len()).expect("Tcx restore");
+    let restored_tcx = crate::tcx::Tcx::restore_collected(types, restored.files.len(), restored.crates.len(), restored.ptr_bytes).expect("Tcx restore");
     assert_eq!(restored.defs.len(), prog.defs.len());
     assert!(restored.syms.names().eq(prog.syms.names()));
     assert_eq!(restored.global_asms, prog.global_asms);
