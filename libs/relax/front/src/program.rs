@@ -5339,6 +5339,18 @@ impl Program {
         cur
     }
 
+    /// A braced enum variant has no value constructor and lives only in the type namespace.
+    pub fn variant_is_struct(&self, d: DefId) -> bool {
+        let def = self.def(d);
+        if def.kind != DefKind::Variant || def.item.0 == u32::MAX {
+            return false;
+        }
+        let Some(f) = self.files.get(def.file as usize) else { return false };
+        let Some(it) = f.ast.items.get(def.item.0 as usize) else { return false };
+        let Some(en) = f.ast.as_enum(&it.kind) else { return false };
+        f.ast.list(en.variants).get(def.sub as usize).is_some_and(|v| matches!(v.data, VariantData::Struct(_)))
+    }
+
     /// Name in a container: module (items, imports, globs), enum (variants), trait (items).
     pub fn lookup_in_container(&self, c: DefId, name: Sym, ns_type: bool) -> Option<DefId> {
         let d = self.def(c);
@@ -5350,7 +5362,7 @@ impl Program {
             }
             DefKind::Enum => {
                 for &v in &self.variants[d.sub as usize] {
-                    if self.def(v).name == name {
+                    if self.def(v).name == name && (ns_type || !self.variant_is_struct(v)) {
                         return Some(v);
                     }
                 }
@@ -5494,10 +5506,7 @@ impl Program {
             let gd = self.def(g);
             let r = match gd.kind {
                 DefKind::Mod => self.lookup_in_module_vis(gd.sub, name, ns_type, q),
-                // a variant is in both namespaces (rustc define(.., TypeNS / ValueNS) in
-                // build_reduced_graph_for_variant): `use Op::*` in a block shadows an outer
-                // struct of the same name for struct literals and patterns too
-                DefKind::Enum => self.lookup_in_container(g, name, false).map(|d| (d, None)),
+                DefKind::Enum => self.lookup_in_container(g, name, ns_type).map(|d| (d, None)),
                 _ => None,
             };
             if collecting { q.collected.push((g, r)); }

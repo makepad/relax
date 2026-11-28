@@ -2795,20 +2795,21 @@ impl<'a> Fcx<'a> {
                 if self.tcx.validates(self.prog, self.file) && !self.scopes.iter().any(|(sy, _)| *sy == s) {
                     if let Some(d) = self.prog.lookup_in_scope(self.module, s, false) {
                         let simple = sub.is_none() && !*by_ref && !*mutbl;
-                        let what = match self.prog.def(d).kind {
-                            DefKind::Struct | DefKind::Variant => match self.value_ctor_shape(d) {
-                                Some(1) => Some(if self.prog.def(d).kind == DefKind::Struct { "tuple structs" } else { "tuple variants" }),
-                                _ => None,
-                            },
-                            _ => None,
-                        };
-                        if let Some(what) = what {
-                            self.err(name.lo, format!("E0530: bindings cannot shadow {what}"));
-                        } else if simple && self.is_unit_or_const_pat_def(d) {
-                            // an identifier pattern naming something ambiguous is an error, not a fresh binding
+                        let kind = self.prog.def(d).kind;
+                        // A bare identifier considers constants, constructors and statics before
+                        // it can introduce a binding. A hard ambiguity ends pattern resolution.
+                        if simple && matches!(kind, DefKind::Const | DefKind::AssocConst | DefKind::Struct | DefKind::Variant | DefKind::Static | DefKind::ForeignStatic) {
                             if let Some(e) = self.prog.name_ambiguity(self.module, s, false, false) {
                                 if let Some(m) = crate::lint::privacy_diag(self.prog, self.file, name.lo, &e) { self.err(name.lo, m); }
+                                if !e.lint {
+                                    self.mark_pat_path_error(p);
+                                    return;
+                                }
                             }
+                        }
+                        if self.is_tuple_ctor_def(d) {
+                            let what = if kind == DefKind::Struct { "tuple structs" } else { "tuple variants" };
+                            self.err(name.lo, format!("E0530: bindings cannot shadow {what}"));
                         }
                     }
                 }
@@ -3670,7 +3671,7 @@ impl<'a> Fcx<'a> {
                 if self.tcx.validates(prog, self.file) && segs[0].0 == SegKind::Ident && !path.global() && path.no_qself() {
                     if let Some(e) = prog.name_ambiguity(self.module, segs[0].1, true, false) { if let Some(m) = crate::lint::privacy_diag(prog, self.file, path.lo, &e) { self.err(path.lo, m); } }
                 }
-                if matches!(prog.def(d).kind, DefKind::Struct | DefKind::Union) {
+                if matches!(prog.def(d).kind, DefKind::Struct | DefKind::Union | DefKind::Variant) {
                     return Res::Def(d);
                 }
                 if prog.def(d).kind == DefKind::TypeAlias {
@@ -3684,11 +3685,6 @@ impl<'a> Fcx<'a> {
                             return Res::Def(*ad);
                         }
                     }
-                }
-            }
-            if let Some(d) = prog.lookup_in_scope(self.module, segs[0].1, false) {
-                if prog.def(d).kind == DefKind::Variant {
-                    return Res::Def(d);
                 }
             }
             self.err(path.lo, format!("E0422: cannot find struct, variant or union type `{}` in this scope", crate::tcx::path_str(prog, self.file, path)));
@@ -3721,7 +3717,7 @@ impl<'a> Fcx<'a> {
                     let at = self.tcx.alias_ty(&self.cx.with_infcx(&self.infcx), prog, alias);
                     if let TyKind::Adt(ad, _, _) = self.tcx.tys.kind(at) {
                         if prog.def(*ad).kind == DefKind::Enum {
-                            if let Some(v) = prog.lookup_in_container(*ad, segs[1].1, false).filter(|v| prog.def(*v).kind == DefKind::Variant) {
+                            if let Some(v) = prog.lookup_in_container(*ad, segs[1].1, true).filter(|v| prog.def(*v).kind == DefKind::Variant) {
                                 return Res::Def(v);
                             }
                         }
@@ -3907,7 +3903,7 @@ impl<'a> Fcx<'a> {
         // resolve_fully_qualified_call looks up enum variants before probing: they win over inherent items)
         if let TyKind::Adt(ad, aargs, _) = self.tcx.tys.kind(st).clone() {
             if self.prog.def(ad).kind == DefKind::Enum {
-                if let Some(v) = self.prog.lookup_in_container(ad, name, false) {
+                if let Some(v) = self.prog.lookup_in_container(ad, name, true) {
                     if self.prog.def(v).kind == DefKind::Variant {
                         let t = self.value_def_ty(v, Some(self.tcx.tys.list(aargs).to_vec()), key);
                         return (Res::Def(v), t);
@@ -4433,13 +4429,7 @@ impl<'a> Fcx<'a> {
                         self.trait_item_paths.insert(self.last_lo, (pd, d));
                     }
                     let t = self.value_def_ty(d, explicit, key);
-                    // An enum's braced variants have no constructor in the value namespace.
-                    let origin = if pk == DefKind::Enum && self.value_ctor_shape(d) == Some(2) {
-                        TypeRelative
-                    } else {
-                        Resolved
-                    };
-                    return (Res::Def(d), t, origin);
+                    return (Res::Def(d), t, Resolved);
                 }
                 if pk == DefKind::Trait
                     && trait_assoc_ty
@@ -4499,7 +4489,7 @@ impl<'a> Fcx<'a> {
         // enum variant through a type alias / Self
         if let TyKind::Adt(ad, aargs, _) = self.tcx.tys.kind(self_ty).clone() {
             if prog.def(ad).kind == DefKind::Enum {
-                if let Some(v) = prog.lookup_in_container(ad, name, false) {
+                if let Some(v) = prog.lookup_in_container(ad, name, true) {
                     let t = self.value_def_ty(v, Some(self.tcx.tys.list(aargs).to_vec()), key);
                     return (Res::Def(v), t, TypeRelative);
                 }

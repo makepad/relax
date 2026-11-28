@@ -102,6 +102,49 @@ fn bare_struct_variant_ident_is_binding_not_path_pattern() {
 }
 
 #[test]
+fn glob_value_beside_braced_variant_positions() {
+    let (prog, tcx, user) = load("
+        mod a { pub enum A { Same { x: u32 } } }
+        mod b { pub const Same: u32 = 1; }
+        use a::A::*;
+        use b::*;
+        pub fn local() { let Same = 0u32; }
+        pub fn param(Same: u32) {}
+        pub async fn async_param(Same: u32) {}
+        pub fn closure() { let c = |Same: u32| {}; }
+        pub fn for_loop() { for Same in [0u32] {} }
+        mod ambiguous {
+            enum A { Same }
+            use self::A::*;
+            use super::b::*;
+            pub fn pick(v: u32) -> u32 { match v { Same => 1, _ => 2 } }
+        }
+        enum PrivateEnum { BracedVariant { x: u32 } }
+        pub use PrivateEnum::BracedVariant;");
+    for (name, origin) in [
+        ("local", "local binding"), ("param", "function argument"), ("async_param", "function argument"),
+        ("closure", "closure argument"), ("for_loop", "`for` loop binding"),
+    ] {
+        let owner = crate::borrowck::body::owners(&prog).find(|o| prog.def(o.owner).krate == user && prog.name(o.owner) == name).unwrap();
+        let body = tcx.typeck(&prog, owner.owner);
+        assert!(body.errors.is_empty(), "{name}: {:?}", body.errors);
+        let errors = crate::pattern_analysis::check_body(&prog, &tcx, &body).errors;
+        assert_eq!(errors.len(), 1, "{name}: {errors:?}");
+        assert!(errors[0].contains(&format!("E0005: refutable pattern in {origin}")), "{name}: {errors:?}");
+    }
+    let owner = crate::borrowck::body::owners(&prog).find(|o| prog.def(o.owner).krate == user && prog.name(o.owner) == "pick").unwrap();
+    let body = tcx.typeck(&prog, owner.owner);
+    assert_eq!(body.errors.len(), 1, "ambiguous pattern: {:?}", body.errors);
+    assert!(body.errors[0].contains("E0659: `Same` is ambiguous"), "{:?}", body.errors);
+
+    let mut own = vec![false; prog.crates.len()];
+    own[user as usize] = true;
+    let privacy = prog.import_privacy_errors(crate::program::Judged::crates(&own));
+    assert_eq!(privacy.len(), 1, "private enum re-export: {privacy:?}");
+    assert!(privacy[0].2.contains("E0365") && privacy[0].2.contains("BracedVariant"), "{privacy:?}");
+}
+
+#[test]
 fn non_unit_path_patterns_are_refused() {
     let (prog, tcx, user) = load("
         pub enum Role { Host, Member(u32), Viewer { sharer: u32 }, Empty {}, EmptyTup() }

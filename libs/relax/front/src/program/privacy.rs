@@ -194,7 +194,7 @@ impl Program {
             let gd = self.def(g);
             (g, match gd.kind {
                 DefKind::Mod => self.glob_binding(gd.sub, name, ns_type),
-                DefKind::Enum => self.lookup_in_container(g, name, false).map(|d| (d, None)),
+                DefKind::Enum => self.lookup_in_container(g, name, ns_type).map(|d| (d, None)),
                 _ => None,
             })
         }).collect());
