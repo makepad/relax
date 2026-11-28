@@ -1046,7 +1046,28 @@ impl<'a> Fcx<'a> {
         }
         for warning in warnings { eprintln!("warning: {}", warning.message); }
         if self.b.errors.is_empty() && self.infcx.tainted_by_errors() {
-            self.b.errors.push(self.prog.record_error(self.file, self.last_lo, "typeck", "type checking failed due to previous errors".into()));
+            use crate::infer::diagnostics::Untaken;
+            let summary = "type checking failed due to previous errors";
+            let message = if let Some((d, how)) = self.infcx.errors.first_untaken() {
+                let file = if d.cause.body_id == crate::program::NO_DEF { self.file } else { self.prog.def(d.cause.body_id).file };
+                let loc = self.prog.error_location(file, d.cause.span);
+                let (line, col) = loc.source.line_col(loc.span.lo);
+                let how = match how {
+                    Untaken::Delivered => "already shown by the session".into(),
+                    Untaken::OtherThread(t) => format!("emitted on thread {t}"),
+                    Untaken::EarlierCopy => "its first copy came from an earlier check on this thread".into(),
+                };
+                format!("{summary}: first error: {}:{line}:{col}: {} ({how})", loc.source.path(), d.message)
+            } else if let Some(site) = self.infcx.first_taint() {
+                let file = site.file().replace('\\', "/");
+                let path = if let Some(i) = file.rfind("/src/") { &file[i + 1..] }
+                    else if file.starts_with("src/") { &file }
+                    else { file.rsplit('/').next().unwrap_or(&file) };
+                format!("{summary} (tainted by an error type at relax-types {path}:{})", site.line())
+            } else {
+                summary.into()
+            };
+            self.b.errors.push(self.prog.record_error(self.file, self.last_lo, "typeck", message));
         }
         self.b.freeze();
         self.b

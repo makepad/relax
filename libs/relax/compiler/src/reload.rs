@@ -1690,7 +1690,6 @@ fn root_positions(pf: &crate::parser::ParsedFile) -> Vec<(usize, usize)> {
 /// line). None: a line names no item of the edit's text (its reason is the whole program's), or
 /// the rounds ran out: the edit restarts whole.
 unsafe fn hold_back(up: *mut Unit, edits: &[Edit], lines: &[String], t0: Instant, retries: usize, base: &IncludeBase) -> Result<Outcome, Option<String>> {
-    const SUMMARY: &str = "type checking failed due to previous errors";
     let mut srcs: Vec<Edit> = edits.iter().map(|e| Edit { file: e.file, path: e.path.clone(), src: e.src.clone() }).collect();
     // the held items' running texts go past each file's own end
     let ends: Vec<usize> = srcs.iter().map(|e| e.src.len()).collect();
@@ -1701,7 +1700,7 @@ unsafe fn hold_back(up: *mut Unit, edits: &[Edit], lines: &[String], t0: Instant
     let mut went: Vec<Vec<(usize, usize)>> = vec![Vec::new(); srcs.len()];
     for round in 0..HOLD_ROUNDS.min(retries) {
         let mut at: Vec<Vec<usize>> = vec![Vec::new(); srcs.len()];
-        for l in named.iter().filter(|l| !l.ends_with(SUMMARY)) {
+        for l in named.iter().filter(|l| !crate::check::is_typeck_summary(l)) {
             let Some((k, p)) = srcs.iter().enumerate().find_map(|(k, e)| line_at(l, &e.path, &e.src).map(|p| (k, p))) else { return Err(None) };
             if p >= ends[k] {
                 // a held item's running text: said at its line there
@@ -1738,7 +1737,7 @@ unsafe fn hold_back(up: *mut Unit, edits: &[Edit], lines: &[String], t0: Instant
             }
             Rung::Restart => reasons.extend(r.lines.iter().cloned()),
             Rung::Refuse if internal_failure(&r.lines) => return Err(None),
-            Rung::Refuse => reached.extend(r.lines.iter().filter(|l| !l.ends_with(SUMMARY)).cloned()),
+            Rung::Refuse => reached.extend(r.lines.iter().filter(|l| !crate::check::is_typeck_summary(l)).cloned()),
         }
         named = r.lines;
     }
@@ -10572,18 +10571,16 @@ fn internal_failure(lines: &[String]) -> bool {
 
 /// What a refused edit reports after its re-check: the first attempt's reasons, then the
 /// retry's new ones. The retry's type check finds the first attempt's errors already reported
-/// and adds only the summary "type checking failed due to previous errors", which goes when a
-/// real error is listed.
+/// and adds only the summary (in any of its forms), which goes when a real error is listed.
 fn refusal_lines(first: Vec<String>, retry: Vec<String>) -> Vec<String> {
-    const SUMMARY: &str = "type checking failed due to previous errors";
     let mut out = first;
     for l in retry {
         if !out.contains(&l) {
             out.push(l);
         }
     }
-    if out.iter().any(|l| !l.ends_with(SUMMARY)) {
-        out.retain(|l| !l.ends_with(SUMMARY));
+    if out.iter().any(|l| !crate::check::is_typeck_summary(l)) {
+        out.retain(|l| !crate::check::is_typeck_summary(l));
     }
     out
 }
@@ -12599,7 +12596,7 @@ unsafe fn watch(up: *mut Unit, mut inputs: Inputs) {
         drop(wait);
         trace_input(watch_ms, (read_started - seen).as_secs_f64() * 1000., ms(read_started), scanned);
         let mut o = apply_update(up, edits);
-        let only_previous_errors = !o.lines.is_empty() && o.lines.iter().all(|l| l.ends_with("type checking failed due to previous errors"));
+        let only_previous_errors = !o.lines.is_empty() && o.lines.iter().all(|l| crate::check::is_typeck_summary(l));
         let mut failure = o.failure.or_else(|| (o.rung == Rung::Refuse && internal_failure(&o.lines)).then_some(makepad_remote::hot::Outcome::Refused));
         let what = names.join(", ");
         if o.rung == Rung::Refuse || o.failure.is_some() {
@@ -13775,12 +13772,18 @@ mod refusal_tests {
     fn a_refused_edit_reports_its_type_error_not_only_the_summary() {
         isolated_test!(a_refused_edit_reports_its_type_error_not_only_the_summary);
         let e0308 = "/c/main.rs:51:24: E0308: mismatched types: expected `u32`, found `&str`".to_string();
-        let summary = "/c/main.rs:53:13: type checking failed due to previous errors".to_string();
-        assert_eq!(refusal_lines(vec![e0308.clone()], vec![summary.clone()]), vec![e0308.clone()]);
-        // a retry that finds the error again adds nothing twice
-        assert_eq!(refusal_lines(vec![e0308.clone()], vec![e0308.clone(), summary.clone()]), vec![e0308.clone()]);
-        // only the summary known: it stays (something must say why)
-        assert_eq!(refusal_lines(Vec::new(), vec![summary.clone()]), vec![summary]);
+        let bare = "/c/main.rs:53:13: type checking failed due to previous errors";
+        for summary in [
+            bare.to_string(),
+            format!("{bare}: first error: /c/main.rs:51:24: E0308: mismatched types (already shown by the session)"),
+            format!("{bare} (tainted by an error type at relax-types src/typeck.rs:2257)"),
+        ] {
+            assert_eq!(refusal_lines(vec![e0308.clone()], vec![summary.clone()]), vec![e0308.clone()]);
+            // a retry that finds the error again adds nothing twice
+            assert_eq!(refusal_lines(vec![e0308.clone()], vec![e0308.clone(), summary.clone()]), vec![e0308.clone()]);
+            // only the summary known: it stays (something must say why)
+            assert_eq!(refusal_lines(Vec::new(), vec![summary.clone()]), vec![summary]);
+        }
         // a new reason of the retry is kept after the first ones
         let other = "/c/other.rs:3:1: E0425: cannot find value `y`".to_string();
         assert_eq!(refusal_lines(vec![e0308.clone()], vec![other.clone()]), vec![e0308, other]);

@@ -54,6 +54,43 @@ fn has(errors: &[String], item: &str, code: &str) -> bool {
 }
 
 #[test]
+fn an_inherited_check_failure_names_its_first_cause() {
+    // The missing field type is already an error at collection; check the body that reads it too.
+    let source = "#![no_std]
+        fn d() -> Missing { loop {} }
+        struct S { f: Missing }
+        fn c(s: S) -> u32 { let _x = s.f; 0 }";
+    let path = std::env::temp_dir().join(format!("relax-taint-{}.rs", crate::unique_test_suffix()));
+    std::fs::write(&path, source).unwrap();
+    let session = std::sync::Arc::new(crate::Session::default());
+    let mut prog = crate::program::Program::new(&session);
+    let user = prog.load_crate("repro", path.to_str().unwrap(), 2021, crate::cfg::CfgSet::host(&session, &[]), vec![]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    prog.crates[user as usize].validate = true;
+    prog.resolve_imports();
+    let mut tcx = crate::tcx::Tcx::new();
+    tcx.collect(&prog);
+    let check = |name: &str| {
+        let owner = crate::borrowck::body::owners(&prog)
+            .find(|o| prog.def(o.owner).krate == user && prog.name(o.owner) == name)
+            .unwrap_or_else(|| panic!("missing body for {name}"));
+        tcx.typeck(&prog, owner.owner)
+    };
+    let d = check("d");
+    let c = check("c");
+    assert_eq!(c.errors.len(), 1, "caller's inherited error: c {:?}, d {:?}", c.errors, d.errors);
+    let (_, summary) = c.errors[0].split_once(": ").expect("caller error has a source position");
+    let site = summary.strip_prefix("type checking failed due to previous errors (tainted by an error type at relax-types src/")
+        .and_then(|site| site.strip_suffix(')')).and_then(|site| site.rsplit_once(':'));
+    assert!(site.is_some_and(|(file, line)| file.ends_with(".rs") && line.parse::<u32>().is_ok_and(|n| n > 0)),
+        "caller's first taint site: {summary}");
+    assert_eq!(d.errors.len(), 2, "owner's errors: {:?}", d.errors);
+    assert!(d.errors[0].ends_with(":2:19: E0425: cannot find type `Missing` in this scope"), "owner's missing type: {:?}", d.errors);
+    assert!(d.errors[1].ends_with(":2:9: signature has unresolved types -- fix the signature errors first"),
+        "owner's signature error: {:?}", d.errors);
+}
+
+#[test]
 fn bare_struct_variant_ident_is_binding_not_path_pattern() {
     let e = errors("
         pub enum Role { Host, Viewer { sharer: u32 }, EmptyStruct {} }

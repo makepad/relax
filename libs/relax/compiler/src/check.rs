@@ -2898,10 +2898,16 @@ fn unit_stage(e: &str) -> crate::check_order::Stage {
     crate::check_order::stage_for(Stage::new(if internal { Phase::Post } else { Phase::Typeck }, 0), e)
 }
 
+/// typeck's summary for a check that failed only through errors reported elsewhere, in any of
+/// its forms (bare, or naming the first error or the first taint site).
+pub(crate) fn is_typeck_summary(e: &str) -> bool {
+    e.lines().next().unwrap_or("").contains("type checking failed due to previous errors")
+}
+
 /// A check that could not run because of an error reported elsewhere (typeck's cascade notes).
 pub(crate) fn is_follow_on(e: &str) -> bool {
     let first = e.lines().next().unwrap_or("");
-    first.contains("type checking failed due to previous errors")
+    is_typeck_summary(e)
         || first.contains("signature has unresolved types -- fix the signature errors first")
         || first.contains("has unresolved types in its signature -- fix its signature errors first")
 }
