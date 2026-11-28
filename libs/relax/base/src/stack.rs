@@ -290,6 +290,33 @@ fn grow<R, F: FnOnce() -> R>(f: F) -> R {
     }
 }
 
+/// Runs `f` on a fresh stack segment with a guard below the requested `bytes`. If the segment
+/// cannot be allocated, runs `f` on the current stack.
+pub fn on_bounded_stack<R, F: FnOnce() -> R>(bytes: usize, f: F) -> R {
+    let Some(seg) = imp::stack_segment(bytes.saturating_add(imp::GUARD)) else {
+        return f();
+    };
+    struct Job<F, R> {
+        f: Option<F>,
+        r: Option<std::thread::Result<R>>,
+    }
+    extern "C" fn run<F: FnOnce() -> R, R>(p: *mut u8) {
+        let job = unsafe { &mut *(p as *mut Job<F, R>) };
+        let f = job.f.take().unwrap();
+        // Catch the panic here so it never unwinds through the stack switch.
+        job.r = Some(std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)));
+    }
+    let mut job: Job<F, R> = Job { f: Some(f), r: None };
+    let old = STACK.with(|c| c.replace((seg.lo, seg.top)));
+    unsafe { imp::call_on_segment(&seg, run::<F, R>, &mut job as *mut Job<F, R> as *mut u8) };
+    STACK.with(|c| c.set(old));
+    imp::free_segment(seg);
+    match job.r.take().unwrap() {
+        Ok(r) => r,
+        Err(e) => std::panic::resume_unwind(e),
+    }
+}
+
 /// Segments `grow` is done with, for the next one: a signal handler whose first calls compile
 /// maps one segment, not one per compile. (Taken and kept without waiting: `grow` may run in a
 /// handler that interrupted its thread inside either.)
@@ -322,6 +349,12 @@ fn thread_stack() -> (usize, usize) {
 pub fn note_thread_stack() {
     let b = thread_stack();
     let _ = STACK.try_with(|c| if c.get().1 == 0 { c.set(program_stack_bounds().unwrap_or(b)) });
+}
+
+/// The calling OS thread's usable stack size in bytes, if the OS reports it.
+pub fn thread_stack_size() -> Option<usize> {
+    let (lo, hi) = stack_bounds();
+    (hi > lo).then(|| hi - lo)
 }
 
 /// Which stack address `sp` of the calling thread is on, as this module knows them, and the bytes
@@ -420,7 +453,7 @@ mod imp {
     const MAP_PRIVATE_ANON: i32 = 0x1002;
 
     /// Guard bytes below a stack segment.
-    const GUARD: usize = 16384;
+    pub(super) const GUARD: usize = 16384;
 
     pub(super) fn stack_segment(len: usize) -> Option<Segment> {
         let seg = unsafe { mmap(std::ptr::null_mut(), len, PROT_RW, MAP_PRIVATE_ANON, -1, 0) };
@@ -655,7 +688,7 @@ mod imp {
         pub(super) fn back(&self) {}
     }
 
-    const GUARD: usize = 65536;
+    pub(super) const GUARD: usize = 65536;
 
     /// A committed segment with a no-access guard at its low end.
     pub(super) fn stack_segment(len: usize) -> Option<Segment> {
@@ -821,6 +854,8 @@ mod imp {
 #[cfg(not(any(unix, windows)))]
 mod imp {
     use super::Segment;
+    pub(super) const GUARD: usize = 0;
+
     pub(super) fn stack_segment(_len: usize) -> Option<Segment> {
         None
     }
