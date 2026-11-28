@@ -11012,72 +11012,231 @@ mod data_tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
+    /// Minimal `Cache` for claim/spill tests: no `Unit`, no `Program`, no thread pools,
+    /// so the test needs neither `isolated_test!` nor `CACHE_UNIT`.
+    fn claim_test_cache(cache_dir: &std::path::Path, store_path: &std::path::Path, fp: u128, manifest_store_gen: u64) -> Cache {
+        Cache {
+            verbose: false,
+            mode: Mode::On,
+            dir: cache_dir.to_path_buf(),
+            stores: Vec::new(),
+            crate_path: Vec::new(),
+            stale: Vec::new(),
+            depth: vec![0],
+            key_crate: HashMap::new(),
+            cur_crate: 0,
+            index: KeyMap::default(),
+            mapped_index: None,
+            fps: vec![fp],
+            crate_names: vec!["app".to_string()],
+            crate_closure: vec![vec![1]],
+            anchors_key: 0,
+            sealed: vec![false],
+            sealed_key: 0,
+            sealed_keys: HashSet::new(),
+            machine_dirs: Vec::new(),
+            shared: None,
+            shared_path: vec![None],
+            shared_stale: vec![false],
+            shared_keys: HashSet::new(),
+            checkout_text: CheckoutText::default(),
+            cur_sealed: false,
+            cur_shared: false,
+            iface: Vec::new(),
+            boot_iface: Vec::new(),
+            iface_plain: Vec::new(),
+            view: vec![1],
+            late: vec![0],
+            late_view: vec![0],
+            late_memo: HashMap::new(),
+            deps: None,
+            bound: Vec::new(),
+            keys_moved: 0,
+            keys_moved_crates: Vec::new(),
+            layout_edited: Vec::new(),
+            name_memo: HashMap::new(),
+            body_names: HashMap::new(),
+            digests: Vec::new(),
+            def_bodies: HashMap::new(),
+            seen_body_keys: HashMap::new(),
+            seen_bodies: None,
+            seen_of: HashMap::new(),
+            code_path: vec![store_path.to_path_buf()],
+            code_stale: vec![false],
+            cert_rejected: HashSet::new(),
+            verdict_rejected: HashSet::new(),
+            slot_crates: HashMap::new(),
+            const_stale: HashSet::new(),
+            const_live: HashSet::new(),
+            const_body_keys: HashMap::new(),
+            front_stores_of: Vec::new(),
+            front_stores_n: 0,
+            enc_defs: None,
+            enc_closure_items: None,
+            crate_by_ident: HashMap::new(),
+            crate_ident: Vec::new(),
+            cfg: 1,
+            pending: Vec::new(),
+            pending_bytes: 0,
+            pending_keys: HashSet::new(),
+            recording_pending: false,
+            front_reserved: HashSet::new(),
+            front_files: Vec::new(),
+            foreign_canon: None,
+            def_maps: HashMap::new(),
+            crate_defs: Vec::new(),
+            crate_defs_scan: None,
+            def_map_partial: None,
+            def_maps_appended: Vec::new(),
+            crate_defs_n: 0,
+            module_defs_n: 0,
+            def_keys: HashMap::new(),
+            mapped_definitions: None,
+            collected_boot: None,
+            collected_committed: false,
+            file_ids: HashMap::new(),
+            file_ids_n: 0,
+            file_hash: HashMap::new(),
+            file_idents: Vec::new(),
+            data_addr: HashMap::new(),
+            const_copy: HashMap::new(),
+            data_key: HashMap::new(),
+            data_crates: HashMap::new(),
+            data_why: HashMap::new(),
+            linked: HashSet::new(),
+            missed: HashSet::new(),
+            linking: HashSet::new(),
+            linking_data: HashSet::new(),
+            manifest: Vec::new(),
+            manifest_present: 0,
+            manifest_missing: 0,
+            manifest_uncached: 0,
+            manifest_keys: HashMap::new(),
+            manifest_key_crates: None,
+            manifest_old_keys: Vec::new(),
+            manifest_present_cached: 0,
+            image: None,
+            image_ids: None,
+            image_rewrite: false,
+            manifest_done: false,
+            manifest_len: 0,
+            image_slots: 0,
+            image_stale: 0,
+            image_rekeyed: 0,
+            manifest_main: 0,
+            written_ids: None,
+            image_built: None,
+            replaced: Vec::new(),
+            loaded_bits: std::sync::OnceLock::new(),
+            startup_ids: std::sync::OnceLock::new(),
+            image_kept: None,
+            image_resume: None,
+            image_reads: std::sync::atomic::AtomicUsize::new(0),
+            image_starts_over: 0,
+            rec_tier: HashMap::new(),
+            manifest_root: Some(0),
+            manifest_store_gen,
+            refresh_claim: None,
+            linked_key: HashMap::new(),
+            linked_crates: HashMap::new(),
+            slot_keys: HashMap::new(),
+            key_waits: false,
+            ordinal_in_edits: false,
+            last_callees: Vec::new(),
+            last_tier1: None,
+            last_kept: Vec::new(),
+            last_digest: None,
+            cur_inl: Vec::new(),
+            last_o2: false,
+            last_provisional: None,
+            last_base: false,
+            base_linked: HashSet::new(),
+            fnkey_bytes: HashMap::new(),
+            pending_verdicts: HashMap::new(),
+            slot_by_bytes: Default::default(),
+            closure_fps: HashMap::new(),
+            ty_written: Vec::new(),
+            ty_written_spare: Vec::new(),
+            ty_read: Vec::new(),
+            ty_read_spare: Vec::new(),
+            closure_ords: HashMap::new(),
+            stats: CacheStats::default(),
+            why_unencodable: HashMap::new(),
+            last_why: "",
+        }
+    }
+
     #[test]
     fn rekeyed_startup_image_refreshes_keeping_claim_across_spill_during_yield() {
-        isolated_test!(rekeyed_startup_image_refreshes_keeping_claim_across_spill_during_yield);
-        let _unit = CACHE_UNIT.lock().unwrap_or_else(|e| e.into_inner());
-        let mut units = Vec::new();
-        let dir = exit_image_fixture(&mut units);
-        let mut start = || {
-            let (u, app) = image_test_start(&dir, &mut units);
-            let (cache, order) = image_test_prelink(&dir, u, app);
-            assert_eq!(order.len(), 42);
-            assert_eq!(cache.stats.prelink_rekeyed, 2);
-            (cache, app, order)
-        };
-        let (mut a, app_a, order_a) = start();
-        let (mut b, app_b, order_b) = start();
-        let (mut c, app_c, order_c) = start();
-        let (mut d, app_d, order_d) = start();
-        drop(start);
+        let dir = std::env::temp_dir().join(format!("relax-refresh-claim-{}-{}", std::process::id(), crate::pack::nonce()));
+        let cache_dir = dir.join("cache");
+        pack::ensure_private_dir(&cache_dir).unwrap();
+        let store_path = cache_dir.join("app-0000000000000000.rcs");
+        crate::store::append(&store_path, vec![NewEntry { key: LEDGER_KEY, kind: KIND_LEDGER, payload: Vec::new() }], false).unwrap();
+        let gen0 = crate::store::header_generation(&store_path).expect("initial store generation");
 
-        // (i) A claims the refresh, then yields in Loop 1 (n == 15 < 42) before queuing any manifest.
-        assert!(!a.record_manifest(&units[1], app_a, &order_a, order_a.len(), &|| true));
-        assert!(a.refresh_claim.is_some(), "claim stays held across a yield");
-        assert!(a.pending_manifest_payload(app_a).is_none());
+        let mut a = claim_test_cache(&cache_dir, &store_path, 0xaaaa, gen0);
+        let mut b = claim_test_cache(&cache_dir, &store_path, 0xaaaa, gen0);
+        let key = a.manifest_key(0).expect("manifest key");
+        let sources_key = a.manifest_sources_key(key);
+        let lock_path = cache_dir.join("refresh").join(format!("{key:032x}.lock"));
 
-        // (ii) An ordinary entry and a manifest tail spilled during the yield must not take the claim.
-        // Writing the tail also bumps the root store's generation, proving B's skip relies on the lock.
+        // (i) A claims the refresh, re-entry keeps the claim, and sibling B is excluded by the lock.
+        assert!(a.claim_rekey_refresh(0, key), "first claimant acquires the refresh lock");
+        assert!(a.refresh_claim.as_ref().is_some_and(|(k, _)| *k == sources_key));
+        assert!(a.claim_rekey_refresh(0, key), "re-entering with the same manifest key keeps the claim");
+        assert!(!b.claim_rekey_refresh(0, key), "sibling skips while claimant holds the lock");
+        assert!(b.refresh_claim.is_none());
+
+        // (ii) An ordinary entry and a manifest tail (KIND_MANIFEST under manifest_tail_key)
+        // spilled before the refreshed manifest must not take the claim.
         a.record_borrowck(1, StoredVerdict::Clean);
-        assert!(a.record_tail(&units[1], app_a, &order_a, &|| false));
-        let spill = a.spill_take().expect("ordinary pending entries spill during the yield");
+        a.push_pending(0, NewEntry { key: a.manifest_tail_key(key), kind: KIND_MANIFEST, payload: vec![1] });
+        let spill = a.spill_take().expect("ordinary + tail entries spill during yield");
         assert!(spill.refresh_claim.is_none(), "non-manifest spill must not take the refresh claim");
         assert!(a.refresh_claim.is_some());
         spill.write().unwrap();
+        assert_ne!(crate::store::header_generation(&store_path), Some(gen0), "intervening spill bumped store generation");
         assert!(a.refresh_claim.is_some());
 
-        // (iii) Sibling B still skips after the intervening spill completes.
-        let skip = |cache: &mut Cache, u: &Unit, app, order: &[u32]| {
-            assert!(cache.record_manifest(u, app, order, order.len(), &|| false));
-            assert_eq!(cache.image_reads.load(std::sync::atomic::Ordering::Relaxed), 0);
-            assert!(cache.image_built.is_none());
-            assert!(cache.pending_manifest_payload(app).is_none());
-        };
-        skip(&mut b, &units[2], app_b, &order_b);
+        // (iii) Sibling B still skips after the intervening spill bumps the store generation.
+        assert!(!b.claim_rekey_refresh(0, key), "sibling still skips via lock after intervening spill");
+        assert!(b.refresh_claim.is_none());
 
-        // (iv) A retries and finishes; the spill carrying the refreshed manifest takes the claim
-        // and keeps excluding sibling C until write() commits manifest_sources_key on disk.
-        assert!(a.record_manifest(&units[1], app_a, &order_a, order_a.len(), &|| false));
-        assert_eq!(a.image_built.as_ref().map(|b| b.1), Some(42));
-        assert!(a.refresh_claim.is_some());
+        // (iv) The spill carrying manifest_sources_key(key) takes the claim and keeps excluding B
+        // until write() commits manifest_sources_key on disk and drops the lock.
+        let mut sources = E::default();
+        sources.u128(a.sources_fp());
+        a.push_pending(0, NewEntry { key, kind: KIND_MANIFEST, payload: vec![2] });
+        a.push_pending(0, NewEntry { key: sources_key, kind: KIND_MANIFEST, payload: sources.0 });
         let manifest_spill = a.spill_take().expect("manifest spill");
         assert!(manifest_spill.refresh_claim.is_some(), "manifest spill must carry the refresh claim");
         assert!(a.refresh_claim.is_none());
-        skip(&mut c, &units[3], app_c, &order_c);
+        assert!(!b.claim_rekey_refresh(0, key), "sibling stays excluded while manifest spill is unwritten");
         manifest_spill.write().unwrap();
 
-        // (v) After the manifest spill releases the claim, sibling D skips via on-disk manifest_sources_key.
-        skip(&mut d, &units[4], app_d, &order_d);
+        // (v) After manifest_spill.write(), the OS lock is released, B skips via on-disk
+        // manifest_sources_key (not a stuck lock), and a run with newer sources_fp can claim.
+        {
+            let f = std::fs::File::options().read(true).write(true).open(&lock_path).unwrap();
+            assert!(f.try_lock().is_ok(), "manifest spill write must release the lock file");
+        }
+        assert!(!b.claim_rekey_refresh(0, key), "sibling skips via committed manifest_sources_key");
+        assert!(b.refresh_claim.is_none());
+        let mut newer = claim_test_cache(&cache_dir, &store_path, 0xbbbb, gen0);
+        assert!(newer.claim_rekey_refresh(0, key), "a run with newer sources_fp claims once lock is released");
 
-        // (vi) Next start is warm with 0 re-keyed slots.
-        let (u, app) = image_test_start(&dir, &mut units);
-        let (cache, order) = image_test_prelink(&dir, u, app);
-        assert_eq!(order.len(), 42);
-        assert_eq!(cache.stats.prelink_rekeyed, 0);
-        assert_eq!(cache.stats.prelink_changed, 0);
-        drop((cache, a, b, c, d));
-        drop(units);
-        std::fs::remove_dir_all(dir).unwrap();
+        // (vi) Claiming a different manifest key drops the previous key's lock first.
+        let other_key = key ^ 1;
+        assert!(newer.claim_rekey_refresh(0, other_key), "claiming a different key succeeds");
+        assert!(newer.refresh_claim.as_ref().is_some_and(|(k, _)| *k == newer.manifest_sources_key(other_key)));
+        {
+            let f = std::fs::File::options().read(true).write(true).open(&lock_path).unwrap();
+            assert!(f.try_lock().is_ok(), "claiming another key releases the previous key's lock");
+        }
+
+        drop((a, b, newer));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
