@@ -45,32 +45,39 @@ fn looks_like_bind(value: &str) -> bool {
         || value.rsplit_once(':').is_some_and(|(host, port)| !host.is_empty() && port.parse::<u16>().is_ok())
 }
 
+fn request_from_args_env(args: impl Iterator<Item = String>, env: Option<&str>) -> Option<Request> {
+    let mut args = args.skip(1).peekable();
+    while let Some(arg) = args.next() {
+        if arg == "--remote" {
+            if let Some(next) = args.peek().filter(|n| looks_like_bind(n)) {
+                return Some(refused(&format!("--remote {next}")));
+            }
+            return Some(Request::On);
+        }
+        if let Some(value) = arg.strip_prefix("--remote=") {
+            return Some(refused(&format!("--remote={value}")));
+        }
+    }
+    match env.map(|v| v.trim().to_ascii_lowercase()).as_deref() {
+        None | Some("") => None,
+        Some("0" | "off" | "false" | "no") => Some(Request::Off),
+        Some("1" | "on" | "true" | "yes") => Some(Request::On),
+        Some(SETTING_ON) => Some(Request::Local),
+        Some(_) => Some(refused(&format!("MAKEPAD_REMOTE={}", env.unwrap_or_default()))),
+    }
+}
+
+fn request_from_setting(setting: Option<&str>) -> Request {
+    if setting.is_some_and(|s| s.trim().eq_ignore_ascii_case(SETTING_ON)) { Request::Local } else { Request::Off }
+}
+
 /// The one rule, for a native build and `makepad run` alike: a command line's `--remote` (the
 /// first argument is the program) opens the endpoint for an agent; else `MAKEPAD_REMOTE` (`env`:
 /// `1`/`on`/`true`/`yes` for an agent, `local` as an ordinary launch, `0`/`off`/`false`/`no`
 /// off); else, with it unset or empty, the per-user setting (`setting`: [`SETTING_ON`] opens it
 /// as an ordinary launch); else nothing is open.
 pub fn request_from(args: impl Iterator<Item = String>, env: Option<&str>, setting: Option<&str>) -> Request {
-    let mut args = args.skip(1).peekable();
-    while let Some(arg) = args.next() {
-        if arg == "--remote" {
-            if let Some(next) = args.peek().filter(|n| looks_like_bind(n)) {
-                return refused(&format!("--remote {next}"));
-            }
-            return Request::On;
-        }
-        if let Some(value) = arg.strip_prefix("--remote=") {
-            return refused(&format!("--remote={value}"));
-        }
-    }
-    match env.map(|v| v.trim().to_ascii_lowercase()).as_deref() {
-        None | Some("") => {}
-        Some("0" | "off" | "false" | "no") => return Request::Off,
-        Some("1" | "on" | "true" | "yes") => return Request::On,
-        Some(SETTING_ON) => return Request::Local,
-        Some(_) => return refused(&format!("MAKEPAD_REMOTE={}", env.unwrap_or_default())),
-    }
-    if setting.is_some_and(|s| s.trim().eq_ignore_ascii_case(SETTING_ON)) { Request::Local } else { Request::Off }
+    request_from_args_env(args, env).unwrap_or_else(|| request_from_setting(setting))
 }
 
 /// The per-user setting's file: `remote` in Makepad's per-user folder (`MAKEPAD_HOME`, else
@@ -89,14 +96,27 @@ pub fn setting() -> Option<String> {
     std::fs::read_to_string(setting_path()?).ok()
 }
 
+fn request_for_with(
+    args: impl Iterator<Item = String>,
+    env: Option<&str>,
+    inspect: bool,
+    read_setting: impl FnOnce() -> Option<String>,
+) -> Request {
+    match request_from_args_env(args, env) {
+        Some(Request::Off | Request::Local) if inspect => Request::On,
+        Some(request) => request,
+        None if inspect => Request::On,
+        None => request_from_setting(read_setting().as_deref()),
+    }
+}
+
 /// A process's request by [`request_from`], with its command line (`args`, the program first),
 /// `MAKEPAD_REMOTE` (`env`, which a caller may take from elsewhere: an Android app's system
-/// property) and the per-user setting; `MAKEPAD_INSPECT=1` asks as `--remote` does.
+/// property) and the per-user setting (read only when neither the command line, `env`, nor
+/// `MAKEPAD_INSPECT=1` already decides); `MAKEPAD_INSPECT=1` asks as `--remote` does.
 pub fn request_for(args: impl Iterator<Item = String>, env: Option<&str>) -> Request {
-    match request_from(args, env, setting().as_deref()) {
-        Request::Off | Request::Local if std::env::var("MAKEPAD_INSPECT").as_deref() == Ok("1") => Request::On,
-        request => request,
-    }
+    let inspect = std::env::var("MAKEPAD_INSPECT").as_deref() == Ok("1");
+    request_for_with(args, env, inspect, setting)
 }
 
 /// [`request_for`] this process's command line.
@@ -165,6 +185,58 @@ mod tests {
                 Request::Refused(msg) => assert!(msg.contains("no value") && msg.contains("hub"), "{msg}"),
                 other => panic!("expected a refusal, got {other:?}"),
             }
+        }
+    }
+
+    /// The per-user setting file is touched only when neither `--remote`, `MAKEPAD_REMOTE`,
+    /// nor `MAKEPAD_INSPECT=1` already decides the answer.
+    #[test]
+    fn per_user_setting_is_read_only_when_nothing_else_decides() {
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>().into_iter();
+        let unread = || -> Option<String> { panic!("setting() must not be read when args or env already decide") };
+
+        // `--remote` (valid or refused) decides without reading the setting.
+        assert_eq!(request_for_with(args(&["app", "--remote"]), None, false, unread), Request::On);
+        assert_eq!(request_for_with(args(&["app", "--remote"]), None, true, unread), Request::On);
+        assert!(matches!(request_for_with(args(&["app", "--remote=5000"]), None, false, unread), Request::Refused(_)));
+        assert!(matches!(request_for_with(args(&["app", "--remote=5000"]), None, true, unread), Request::Refused(_)));
+        assert!(matches!(request_for_with(args(&["app", "--remote", "5000"]), None, false, unread), Request::Refused(_)));
+
+        // Non-empty `MAKEPAD_REMOTE` decides without reading the setting.
+        for off in ["0", "off", "false", "no"] {
+            assert_eq!(request_for_with(args(&["app"]), Some(off), false, unread), Request::Off);
+            assert_eq!(request_for_with(args(&["app"]), Some(off), true, unread), Request::On);
+        }
+        for on in ["1", "on", "true", "yes"] {
+            assert_eq!(request_for_with(args(&["app"]), Some(on), false, unread), Request::On);
+            assert_eq!(request_for_with(args(&["app"]), Some(on), true, unread), Request::On);
+        }
+        assert_eq!(request_for_with(args(&["app"]), Some("local"), false, unread), Request::Local);
+        assert_eq!(request_for_with(args(&["app"]), Some("local"), true, unread), Request::On);
+        assert!(matches!(request_for_with(args(&["app"]), Some("8399"), false, unread), Request::Refused(_)));
+        assert!(matches!(request_for_with(args(&["app"]), Some("8399"), true, unread), Request::Refused(_)));
+
+        // `MAKEPAD_INSPECT=1` with open args/env also decides without reading the setting.
+        assert_eq!(request_for_with(args(&["app"]), None, true, unread), Request::On);
+        assert_eq!(request_for_with(args(&["app"]), Some(""), true, unread), Request::On);
+
+        // Only when args, `MAKEPAD_REMOTE`, and `MAKEPAD_INSPECT` leave it open is the setting read once.
+        for env in [None, Some(""), Some("  ")] {
+            let mut reads = 0;
+            assert_eq!(
+                request_for_with(args(&["app"]), env, false, || { reads += 1; Some("local\n".into()) }),
+                Request::Local,
+                "env={env:?} falls through to the setting"
+            );
+            assert_eq!(reads, 1, "env={env:?} reads the setting exactly once");
+
+            let mut reads = 0;
+            assert_eq!(
+                request_for_with(args(&["app"]), env, false, || { reads += 1; None }),
+                Request::Off,
+                "env={env:?} with no setting is Off"
+            );
+            assert_eq!(reads, 1, "env={env:?} reads the setting exactly once");
         }
     }
 }
