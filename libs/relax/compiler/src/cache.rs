@@ -12367,7 +12367,6 @@ mod data_tests {
     /// its borrow error was gone (relax review B-M1).
     #[test]
     fn sibling_impls_keep_borrowck_verdicts_of_their_own() {
-        isolated_test!(sibling_impls_keep_borrowck_verdicts_of_their_own);
         let sess = &std::sync::Arc::new(crate::Session::default());
         let root = std::env::temp_dir().join(format!("relax-siblings-{}-{}", std::process::id(), crate::clock::wall_ns()));
         std::fs::create_dir_all(&root).unwrap();
@@ -12394,7 +12393,6 @@ mod data_tests {
     /// (stable::def_ident), whose header text and twin ordinal tell them apart.
     #[test]
     fn macro_twin_impls_key_their_header_constants_apart() {
-        isolated_test!(macro_twin_impls_key_their_header_constants_apart);
         let sess = &std::sync::Arc::new(crate::Session::default());
         let root = std::env::temp_dir().join(format!("relax-twin-consts-{}-{}", std::process::id(), crate::clock::wall_ns()));
         std::fs::create_dir_all(&root).unwrap();
@@ -12661,7 +12659,6 @@ mod data_tests {
 
     #[test]
     fn front_sources_have_distinct_keys_and_images() {
-        isolated_test!(front_sources_have_distinct_keys_and_images);
         let sess = &std::sync::Arc::new(crate::Session::default());
         let path = "same.rs";
         let first = b"fn value() -> u32 { 1 }";
@@ -12957,7 +12954,6 @@ mod nounwind_tests {
 
     #[test]
     fn entries_keep_false_and_true_answers_before_code() {
-        isolated_test!(entries_keep_false_and_true_answers_before_code);
         let mut e = E::default();
         e.u8(0);
         // no inlined slots, no pending ones
