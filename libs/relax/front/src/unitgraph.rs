@@ -1984,20 +1984,15 @@ fn run_one(sess: &std::sync::Arc<crate::Session>, bs: &BuildScript, raw: &[RawUn
         }
         Err(why) => why,
     };
-    // One run at a time makes a script's output (its OUT_DIR is one folder for every run of this
-    // run dir): the run holds `relax-claim` beside it locked while its script runs. A run
-    // that finds it held waits and takes the output the other made, where two runs started
-    // together each compiled and ran every script. The OS drops the lock with a run that dies.
+    // One run at a time makes a reusable output. The claim covers all placements of this
+    // script: a holder's new declarations may move a waiter to a different build dir.
     // The script slot (this process's) comes first: a run holding the claim and waiting for a slot
     // could wait on a slot whose script's nested run waits for this claim (a package that is
     // both a dependency here and a build-dependency of another script).
-    // The run that holds it names itself in it (its pid and its owner, `claim_holder`):
-    // a waiter says whom it waits on, and a hang names its holder. A relax-runner test sat 26 min
-    // on its build-script claim, held by a hung run of another owner (11-13).
-    let _slot = script_slot();
     let claim_path = format!("{}/relax-claim", base_dir);
-    let claim = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&claim_path).ok();
-    if let Some(claim) = claim.as_ref().filter(|claim| claim.try_lock().is_err()) {
+    let mut waited = false;
+    let acquired = acquire_claim(&claim_path, CLAIM_WAIT_BUDGET, || {
+        waited = true;
         // (a silent run's stderr is its program's: the line goes to the session log alone.) Every
         // wait is kept beside the claim (relax-claim-waits, the last 20), a check's too, which
         // keeps no session log. A wait on a sibling of the same `check -p`, whose serial run never
@@ -2011,22 +2006,36 @@ fn run_one(sess: &std::sync::Arc<crate::Session>, bs: &BuildScript, raw: &[RawUn
         } else {
             crate::progress::log(&line);
         }
-        let _ = claim.lock();
-        // (the wait can be long: the checkout's files are read again)
-        if let Some(content) = &shared {
-            content.borrow_mut().clear();
-        }
-        let (at, standing) = place();
-        build_dir = at;
-        match standing {
-            Ok(old) => {
-                if sess.runtime.profile { eprintln!("relax build-script: {} made by another run", pname); }
-                return (Ok(old), format!("{}/out", build_dir), confined);
+    });
+    let publish = matches!(acquired, ClaimAcquire::Claimed(..));
+    match &acquired {
+        ClaimAcquire::Claimed(_slot, claim) => {
+            if waited {
+                if let Some(content) = &shared {
+                    content.borrow_mut().clear();
+                }
+                let (at, standing) = place();
+                build_dir = at;
+                match standing {
+                    Ok(old) => {
+                        if sess.runtime.profile { eprintln!("relax build-script: {} made by another run", pname); }
+                        return (Ok(old), format!("{}/out", build_dir), confined);
+                    }
+                    Err(now) => why = now,
+                }
             }
-            Err(now) => why = now,
+            if let Some(f) = claim { name_claim(f); }
+        }
+        ClaimAcquire::Fallback(_slot, elapsed) => {
+            build_dir = match own_script_dir(root, &build_dir) {
+                Ok(own) => own,
+                Err(e) => return (Err(format!("build script of {pname}: cannot reserve a private output directory: {e}")), out_dir, confined),
+            };
+            let line = format!("relax build-script: {pname} claim {claim_path} still held after {elapsed:.2?} ({}); running in isolated OUT_DIR {build_dir}/out", claim_holder(&claim_path));
+            keep_noted(&format!("{base_dir}/relax-claim-waits"), &line);
+            if sess.runtime.profile { eprintln!("{line}"); } else { crate::progress::log(&line); }
         }
     }
-    if let Some(claim) = claim.as_ref() { name_claim(claim); }
     out_dir = format!("{}/out", build_dir);
     let _ = std::fs::create_dir_all(&out_dir);
     cmd.env("OUT_DIR", &out_dir);
@@ -2035,10 +2044,11 @@ fn run_one(sess: &std::sync::Arc<crate::Session>, bs: &BuildScript, raw: &[RawUn
     let env_path = format!("{}/relax-rerun-env", build_dir);
     // an output stands with its key, written after it: a folder this run makes again holds none
     // until the run is done (a start whose inputs read the same never takes it half made)
-    let _ = std::fs::remove_file(&key_path);
-    // why this script runs again, kept beside its output (relax-rerun-why: the last 20) and shown with RELAX_PROFILE
+    if publish {
+        let _ = std::fs::remove_file(&key_path);
+        note_rerun(&build_dir, &why);
+    }
     if sess.runtime.profile { eprintln!("relax build-script: {} runs: {}", pname, why); }
-    note_rerun(&build_dir, &why);
     let started = std::time::Instant::now();
     let output = cmd.output();
     if sess.runtime.profile {
@@ -2050,11 +2060,19 @@ fn run_one(sess: &std::sync::Arc<crate::Session>, bs: &BuildScript, raw: &[RawUn
             let refused = refusals(&stdout, &out_dir);
             if !refused.is_empty() {
                 // nothing of it is kept, so it never stands
-                let _ = std::fs::remove_file(&key_path);
-                let _ = std::fs::remove_file(&output_path);
+                if publish {
+                    let _ = std::fs::remove_file(&key_path);
+                    let _ = std::fs::remove_file(&output_path);
+                }
                 return (Err(format!("{}: the build script of `{}` ran confined and printed what a confined build script may not:\n  {}", bs.src_path, pname, refused.join("\n  "))), out_dir, confined);
             }
             let stdout = if shared.is_some() { shared_output(&stdout) } else { stdout };
+            if let Some(given) = &given {
+                say_withheld(pname, &stdout, given);
+            }
+            if !publish {
+                return (Ok(stdout), out_dir, confined);
+            }
             // an output that names its checkout stands for that checkout alone (`names_checkout`),
             // one that names the program that ran it for that program alone (`names_program`)
             let own = shared.is_some() && names_checkout(&stdout, &out_dir);
@@ -2068,9 +2086,6 @@ fn run_one(sess: &std::sync::Arc<crate::Session>, bs: &BuildScript, raw: &[RawUn
                 }
             }
             let keyed = keyed_output(&stdout, own, program);
-            if let Some(given) = &given {
-                say_withheld(pname, &stdout, given);
-            }
             if let Some(key) = rerun_key(&keyed, dir, &env_key, shared.as_ref(), given.as_deref()) {
                 let _ = std::fs::write(&output_path, &stdout);
                 let _ = std::fs::write(&key_path, key);
@@ -2081,7 +2096,7 @@ fn run_one(sess: &std::sync::Arc<crate::Session>, bs: &BuildScript, raw: &[RawUn
             // what the script declared names the place of its next output (`script_build_dir`)
             let declared = declared_inputs(&keyed);
             if std::fs::read_to_string(&declared_path).ok().as_deref() != Some(declared.as_str()) {
-                let _ = std::fs::write(&declared_path, &declared);
+                let _ = write_atomic_text(&declared_path, &declared);
             }
             (Ok(stdout), out_dir, confined)
         }
@@ -2831,6 +2846,74 @@ fn script_slot() -> ScriptSlot {
     ScriptSlot
 }
 
+/// Claim-polling budget. Taking a process-local script slot can itself wait.
+const CLAIM_WAIT_BUDGET: std::time::Duration = std::time::Duration::from_secs(4);
+const CLAIM_POLL_MIN: std::time::Duration = std::time::Duration::from_millis(50);
+const CLAIM_POLL_MAX: std::time::Duration = std::time::Duration::from_millis(200);
+
+enum ClaimAcquire {
+    Claimed(ScriptSlot, Option<std::fs::File>),
+    Fallback(ScriptSlot, std::time::Duration),
+}
+
+/// Takes a slot before trying the claim, and releases the slot between attempts.
+fn acquire_claim(claim_path: &str, budget: std::time::Duration, on_first_wait: impl FnOnce()) -> ClaimAcquire {
+    let start = std::time::Instant::now();
+    let mut delay = CLAIM_POLL_MIN;
+    let mut on_first_wait = Some(on_first_wait);
+    let Ok(claim) = std::fs::OpenOptions::new().create(true).truncate(false).read(true).write(true).open(claim_path) else {
+        return ClaimAcquire::Claimed(script_slot(), None);
+    };
+    loop {
+        let slot = script_slot();
+        if claim.try_lock().is_ok() {
+            return ClaimAcquire::Claimed(slot, Some(claim));
+        }
+        drop(slot);
+        if let Some(note) = on_first_wait.take() { note(); }
+        let remaining = budget.saturating_sub(start.elapsed());
+        if remaining.is_zero() {
+            return ClaimAcquire::Fallback(script_slot(), start.elapsed());
+        }
+        std::thread::sleep(delay.min(remaining));
+        delay = (delay * 2).min(CLAIM_POLL_MAX);
+    }
+}
+
+/// Reserve before registering: a recycled pid can have left an output under the same name.
+/// Exit releases its use lock. A later prune can reclaim an old dir once no root names it
+/// and no process holds it.
+fn own_script_dir(root: &BuildRoot, build_dir: &str) -> std::io::Result<String> {
+    let leaf = std::path::Path::new(build_dir).file_name().and_then(|n| n.to_str()).unwrap_or("script");
+    loop {
+        let seq = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let name = format!("{leaf}-own-{}-{seq}", std::process::id());
+        match std::fs::create_dir(root.build.join(&name)) {
+            Ok(()) => return Ok(root.take(&name)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+fn write_atomic_text(path: &str, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    loop {
+        let seq = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = format!("{path}.tmp-{}-{seq}", std::process::id());
+        let mut file = match std::fs::File::create_new(&tmp) {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        };
+        let written = file.write_all(text.as_bytes());
+        drop(file);
+        let result = written.and_then(|()| std::fs::rename(&tmp, path));
+        if result.is_err() { let _ = std::fs::remove_file(&tmp); }
+        return result;
+    }
+}
+
 /// A lock per output path, held while that file is written.
 fn path_lock(path: &str) -> relax_session::sync::MutexGuard<'static, ()> {
     static LOCKS: Mutex<Vec<(String, &'static Mutex<()>)>> = Mutex::new(Vec::new());
@@ -3147,6 +3230,70 @@ mod shared_script_tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    static SLOT_TEST: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn held_claim(dir: &Path) -> (String, std::fs::File) {
+        let path = dir.join("relax-claim");
+        let holder = std::fs::File::create_new(&path).unwrap();
+        holder.lock().unwrap();
+        (path.to_str().unwrap().to_owned(), holder)
+    }
+
+    #[test]
+    fn acquire_claim_reuses_fast_holder_and_releases_script_slot_while_waiting() {
+        let _serial = SLOT_TEST.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = scratch("claim-reuse");
+        let (path, holder) = held_claim(&dir);
+        let (entered, waiting) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let worker = std::thread::spawn(move || {
+            let mut calls = 0;
+            let acquired = acquire_claim(&path, std::time::Duration::MAX, || {
+                calls += 1;
+                let _ = entered.send(());
+                let _ = released.recv();
+            });
+            (acquired, calls)
+        });
+        let _ = waiting.recv();
+        let running = *SCRIPT_RUNNING.lock().unwrap();
+        drop(holder);
+        drop(release);
+        let (acquired, calls) = worker.join().unwrap();
+        let claimed = matches!(acquired, ClaimAcquire::Claimed(_, Some(_)));
+        drop(acquired);
+        std::fs::remove_dir_all(dir).unwrap();
+        assert_eq!(running, 0, "the waiter holds no script slot while it waits");
+        assert!(claimed, "the waiter acquired the released claim");
+        assert_eq!(calls, 1, "the first miss was reported once");
+    }
+
+    #[test]
+    fn acquire_claim_falls_back_after_budget_on_held_claim() {
+        let _serial = SLOT_TEST.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = scratch("claim-fallback");
+        let (path, holder) = held_claim(&dir);
+        let acquired = acquire_claim(&path, std::time::Duration::ZERO, move || drop(holder));
+        let fallback = matches!(acquired, ClaimAcquire::Fallback(_, _));
+        let running = *SCRIPT_RUNNING.lock().unwrap();
+        drop(acquired);
+        std::fs::remove_dir_all(dir).unwrap();
+        assert!(fallback, "expected Fallback after the claim-polling budget, got Claimed");
+        assert_eq!(running, 1, "the fallback has its script slot");
+        assert_eq!(*SCRIPT_RUNNING.lock().unwrap(), 0, "dropping the fallback releases the slot");
+    }
+
+    #[test]
+    fn write_atomic_text_replaces_content_without_leaving_temp_files() {
+        let dir = scratch("atomic-text");
+        let path = dir.join("relax-declared");
+        write_atomic_text(path.to_str().unwrap(), "first declaration").unwrap();
+        write_atomic_text(path.to_str().unwrap(), "second").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "second");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().path()).collect::<Vec<_>>(), [path]);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     fn compiler_graph(ws: &Path) -> Graph {
