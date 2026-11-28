@@ -1,6 +1,6 @@
-// An awaited future and the value its await returns must not share the coroutine state's bytes:
-// the value is stored before the future is dropped, and the value (an aggregate) lives on across a
-// later await while the awaited future's Drop writes its own fields. Each test runs coroutines to
+// An awaited future and the value its await returns may share the coroutine state's bytes only if
+// the future is dropped before the value is written: here the value (an aggregate) lives on across
+// a later await, and the awaited future's Drop writes its own fields. Each test runs coroutines to
 // the end and drops them while suspended at every poll count, then checks that nothing leaked.
 #![allow(dead_code)]
 
