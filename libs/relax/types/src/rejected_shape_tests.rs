@@ -210,6 +210,21 @@ fn non_unit_path_patterns_are_refused() {
         pub fn assign_braced(r: Braced, v: u32) { self::Braced(v) = r; }
         pub fn nested_viewer(r: Role, mut v: u32, mut x: u32) { (Role::Viewer(v), x) = (r, 1); }
         pub fn nested_fn(r: Role, v: u32, mut x: u32) { (self::fun(v), x) = (r, 1); }
+        pub enum E { V { x: u32 } }
+        pub fn const_enum_prefix<const E: usize>(x: self::E) {
+            match x { E::V => {} _ => {} }
+        }
+        mod projection {
+            pub trait HasRole { type Out; }
+            pub struct Holder;
+            pub enum Role { Viewer { sharer: u32 } }
+            impl HasRole for Holder { type Out = Role; }
+            type A = <Holder as HasRole>::Out;
+            pub fn const_alias_prefix<const A: usize>() -> u32 {
+                let r = A::Viewer { sharer: 1 };
+                match r { A::Viewer { sharer } => sharer }
+            }
+        }
     ");
 
     let bare_self = "E0533: expected unit struct, found self constructor `Self`";
@@ -273,6 +288,8 @@ fn non_unit_path_patterns_are_refused() {
         ("assign_fn", &[invalid_lhs]), ("nested_fn", &[invalid_lhs]),
         ("assign_unit", &["E0618: expected function", invalid_lhs]),
         ("assign_braced", &["E0425: cannot find function, tuple struct or tuple variant", invalid_lhs]),
+        ("const_enum_prefix", &["E0533: expected unit struct, unit variant or constant, found struct variant `E::V`"]),
+        ("const_alias_prefix", &[]),
     ];
     let owners: Vec<_> = crate::borrowck::body::owners(&prog).filter(|o| prog.def(o.owner).krate == user).collect();
     for &(name, expected) in cases {
@@ -294,6 +311,21 @@ fn non_unit_path_patterns_are_refused() {
             assert!(analysis.errors.is_empty(), "{name}: {:?}", analysis.errors);
         }
     }
+
+    // In edition 2015 the leading :: selects the crate root, even beside a type parameter.
+    let (mut prog, tcx, user) = load_source("
+        pub enum E { V { x: u32 } }
+        pub fn global_braced<E>(_e: E, v: ::E) -> u32 {
+            let w = ::E::V { x: 1 };
+            match w { ::E::V { x } => x + match v { ::E::V { x } => x } }
+        }
+        pub fn global_bare<E>(_e: E, v: ::E) { match v { ::E::V => {} } }
+    ", 2015, "repro");
+    prog.crates[user as usize].validate = true;
+    let errors = errors_of(&prog, &tcx, user);
+    assert!(!errors.iter().any(|e| e.starts_with("repro::global_braced: ")), "global_braced: {errors:?}");
+    assert_eq!(errors.len(), 1, "global_bare: {errors:?}");
+    assert!(errors[0].starts_with("repro::global_bare: ") && errors[0].contains("E0533: expected unit struct, unit variant or constant, found struct variant"), "global_bare: {errors:?}");
 }
 
 /// `let _ = *r;` mentions the place behind `r` without using its value. Going through the `Deref` reads the

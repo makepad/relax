@@ -3095,7 +3095,7 @@ impl Tcx {
             if let Some(s) = prog.syms.get(name) {
                 // an item of the owner's body blocks shadows its type parameters (late.rs ribs)
                 let shadowed = env.owner.is_some_and(|o| prog.lookup_in_body_blocks(module, o, s, true).is_some());
-                for (i, n) in env.names.iter().enumerate().filter(|_| !shadowed) {
+                for (i, n) in env.names.iter().enumerate().filter(|_| !shadowed && !p.global()) {
                     // a const parameter lives in the value namespace: a type path never names it
                     if *n == s && !env.consts.iter().any(|c| c.0 as usize == i) {
                         // a type parameter takes no generic arguments (E0109), no constraints (E0229)

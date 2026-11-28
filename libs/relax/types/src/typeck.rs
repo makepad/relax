@@ -5293,10 +5293,10 @@ impl<'a> Fcx<'a> {
             return Some(st);
         }
         // generic param `T::item`
-        if n == 1 {
+        if n == 1 && !path.global() {
             let s = self.sym(self.ast().segs(path.segs)[0].name);
             for (i, nm) in self.env.names.iter().enumerate() {
-                if *nm == s && i < self.b.args.len() {
+                if *nm == s && i < self.b.args.len() && !self.env.consts.iter().any(|c| c.0 as usize == i) {
                     return Some(self.b.args[i]);
                 }
             }
