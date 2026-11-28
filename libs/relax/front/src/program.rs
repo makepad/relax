@@ -1839,7 +1839,7 @@ impl Program {
                 Some((pf, used)) if x.mod_path == self.cur_mod_path && used.replays(&self.macros, &kname, path) => {
                     why = "preloaded";
                     ahead_image = x.image_bytes;
-                    ahead = Some((pf, used, x.prep));
+                    ahead = Some((pf, used, x.prep, x.derive_failures));
                 }
                 Some((mut pf, _)) => {
                     PARSE_AGAIN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1859,7 +1859,7 @@ impl Program {
                 eprintln!("boot-trace-reparse: {path} ({why}) speculative_module={:?} published_module={:?}", x.mod_path, self.cur_mod_path);
             }
         }
-        let (mut pf, mut used, mut prep) = match ahead {
+        let (mut pf, mut used, mut prep, mut derive_failures) = match ahead {
             Some(x) => x,
             None => {
                 // the macro prescan read and lexed most files already
@@ -1876,9 +1876,12 @@ impl Program {
                     }
                 }
                 let bctx = std::rc::Rc::new(crate::builtins::FileCtx::new(&kname, path, &self.cur_mod_path, &self.crates[krate as usize].cfg));
-                let (pf, used) = self.crates[krate as usize].context.parse_input(src, pre, edition,
-                    Some(crate::macros::MacroScope::new(self.macros.clone())), bctx, crate::parser::lazy_auto())?;
-                (pf, used.unwrap(), None)
+                let (parsed, failures) = crate::macro_reg::capture_derive_failures(|| {
+                    self.crates[krate as usize].context.parse_input(src, pre, edition,
+                        Some(crate::macros::MacroScope::new(self.macros.clone())), bctx, crate::parser::lazy_auto())
+                });
+                let (pf, used) = parsed?;
+                (pf, used.unwrap(), None, failures)
             }
         };
         // A lookup that found no definition of the table may name one an expansion writes in a
@@ -1945,10 +1948,12 @@ impl Program {
             }
             if !added || used.replays(&table, &kname, path) { break; }
             let bctx = std::rc::Rc::new(crate::builtins::FileCtx::new(&kname, path, &self.cur_mod_path, &self.crates[krate as usize].cfg));
-            let (fresh, uses) = self.crates[krate as usize].context.parse_input(
-                pf.src[..pf.src_len as usize].to_vec(), None, edition,
-                Some(crate::macros::MacroScope::new(table.clone())), bctx, crate::parser::lazy_auto(),
-            )?;
+            let (parsed, failures) = crate::macro_reg::capture_derive_failures(|| {
+                self.crates[krate as usize].context.parse_input(pf.src[..pf.src_len as usize].to_vec(), None, edition,
+                    Some(crate::macros::MacroScope::new(table.clone())), bctx, crate::parser::lazy_auto())
+            });
+            let (fresh, uses) = parsed?;
+            derive_failures = failures;
             parse_table = table;
             pf = fresh;
             used = uses.unwrap();
@@ -1972,10 +1977,12 @@ impl Program {
             if !used.uses.is_empty() { next.add_exp_uses(&kname, used.uses.clone()); }
             if used.replays(&table, &kname, path) { break; }
             let bctx = std::rc::Rc::new(crate::builtins::FileCtx::new(&kname, path, &self.cur_mod_path, &self.crates[krate as usize].cfg));
-            let (fresh, uses) = self.crates[krate as usize].context.parse_input(
-                pf.src[..pf.src_len as usize].to_vec(), None, edition,
-                Some(crate::macros::MacroScope::new(table.clone())), bctx, crate::parser::lazy_auto(),
-            )?;
+            let (parsed, failures) = crate::macro_reg::capture_derive_failures(|| {
+                self.crates[krate as usize].context.parse_input(pf.src[..pf.src_len as usize].to_vec(), None, edition,
+                    Some(crate::macros::MacroScope::new(table.clone())), bctx, crate::parser::lazy_auto())
+            });
+            let (fresh, uses) = parsed?;
+            derive_failures = failures;
             parse_table = table;
             pf = fresh;
             used = uses.unwrap();
@@ -1995,10 +2002,11 @@ impl Program {
         };
         if let Some(verify) = verify_image {
             let bctx = std::rc::Rc::new(crate::builtins::FileCtx::new(&kname, path, &self.cur_mod_path, &self.crates[krate as usize].cfg));
-            let (mut fresh, fused) = self.crates[krate as usize].context.parse_input(
-                pf.src[..pf.src_len as usize].to_vec(), None, edition,
-                Some(crate::macros::MacroScope::new(parse_table.clone())), bctx, crate::parser::lazy_auto(),
-            ).unwrap_or_else(|e| panic!("front verify parse {}: {:?}", path, e));
+            let (parsed, _) = crate::macro_reg::capture_derive_failures(|| {
+                self.crates[krate as usize].context.parse_input(pf.src[..pf.src_len as usize].to_vec(), None, edition,
+                    Some(crate::macros::MacroScope::new(parse_table.clone())), bctx, crate::parser::lazy_auto())
+            });
+            let (mut fresh, fused) = parsed.unwrap_or_else(|e| panic!("front verify parse {}: {:?}", path, e));
             fresh.bind_sources(path, &self.sources).expect("front verify sources");
             let fprep = prepare_file(&mut fresh, &self.crates[krate as usize].cfg);
             if pf.part.get().is_some() { let _ = fresh.part(&self.crates[krate as usize].cfg); }
@@ -2034,6 +2042,7 @@ impl Program {
         if !used.uses.is_empty() {
             table.add_exp_uses(&kname, used.uses);
         }
+        crate::macro_reg::commit_derive_failures(derive_failures);
         self.files.push(pf);
         self.file_paths.push(path.to_string());
         self.exec_profile_file(self.file_paths.len() as u32 - 1);
@@ -7324,6 +7333,47 @@ mod missing_tests {
 mod deferred_load_tests {
     use super::*;
     use std::sync::Arc;
+
+    #[test]
+    fn load_file_drops_retried_derive_failures_and_commits_accepted_ones() {
+        let retry = crate::macro_reg::FailurePath("derive_load_retry.rs");
+        let accepted = crate::macro_reg::FailurePath("derive_load_accepted.rs");
+        let retry_src = "pub fn f() -> crate::late_ty!() { 0 }\n#[derive(__Slice2RetryDerive)] pub struct S { x: u32 }\n#[macro_export] macro_rules! late_ty { () => { u32 }; }\n";
+        let accepted_src = "#[derive(__Slice2AcceptedDerive)] pub struct Accepted { x: u32 }\n";
+        let sess = Arc::new(crate::Session::default());
+        let cfg = CfgSet::host(&sess, &[]);
+        let test_cfg = cfg.holds("test");
+        let mut prog = Program::new(&sess);
+        prog.sources = Arc::new(prog.sources.overlay(retry.0, Arc::from(retry_src.as_bytes()))
+            .overlay(accepted.0, Arc::from(accepted_src.as_bytes())));
+        prog.cur_mod_path = "test".into();
+        prog.crates.push(CrateInfo {
+            name: prog.syms.intern("test"), root_mod: 0, edition: 2021, recursion_limit: 128,
+            deps: Vec::new(), cfg, proc_macro: false, is_bin: false, harness: false, validate: false,
+            rustc_laid: false, relaxed: Default::default(), export_opt_level: Default::default(),
+            features: Default::default(), impl_view: Default::default(), root_path: retry.0.into(),
+            context: crate::source_context::Context::new(retry.0, prog.sources.clone(), &sess),
+        });
+        Arc::make_mut(&mut prog.macros).add_crate("test".into(), Arc::new(crate::macros::CrateMods {
+            root: "test".into(), src: retry.0.into(), ..Default::default()
+        }));
+
+        let lo = retry_src.find("#[derive").unwrap();
+        let hi = lo + retry_src[lo..].find('\n').unwrap();
+        let _retry_guard = crate::builtins::seed_pre_derive_failure(retry.0, test_cfg, lo as u32, hi as u32,
+            "__Slice2RetryDerive", "stale_first_pass");
+        let id = prog.load_file(retry.0, 2021, 0).unwrap();
+        assert!(!crate::builtins::has_pre_derive_entries(retry.0), "first parse missed its seeded entry");
+        assert!(!prog.files[id as usize].ast.tys.iter().any(|ty| matches!(ty, Ty::Mac(_))),
+            "the retry must resolve the type macro exported later in the file");
+        assert!(retry.messages().is_empty(), "the loader published the discarded parse's failure");
+
+        let name = "__Slice2AcceptedDerive";
+        let _accepted_guard = crate::builtins::seed_pre_derive_failure(accepted.0, test_cfg, 0,
+            accepted_src.trim_end().len() as u32, name, "accepted_err");
+        prog.load_file(accepted.0, 2021, 0).unwrap();
+        assert_eq!(accepted.messages(), [format!("{}: derive({name}) failed: accepted_err", accepted.0)]);
+    }
 
     // Run the original full import/defer fixpoint on the same publication order.
     // This also compares intermediate waits, before all skipped files are loaded.

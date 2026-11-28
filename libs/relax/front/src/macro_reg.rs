@@ -285,13 +285,66 @@ pub fn add_pre_wall(ns: u64) {
 /// (rustc would reject the program). Reported by `makepad run` / `--check` (run.rs).
 static DERIVE_FAILED: relax_session::sync::Mutex<Option<(std::collections::HashSet<(String, u32, String)>, Vec<String>)>> = relax_session::sync::Mutex::new(None);
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeriveFailure {
+    pub path: String,
+    pub item_lo: u32,
+    pub line: u32,
+    pub col: u32,
+    pub name: String,
+    pub msg: String,
+}
+
+thread_local! {
+    static CAPTURE: RefCell<Option<Vec<DeriveFailure>>> = const { RefCell::new(None) };
+}
+
+struct CaptureGuard(Option<Vec<DeriveFailure>>);
+
+impl CaptureGuard {
+    fn replace(next: Option<Vec<DeriveFailure>>) -> Self {
+        Self(CAPTURE.with(|slot| slot.replace(next)))
+    }
+}
+
+impl Drop for CaptureGuard {
+    fn drop(&mut self) { CAPTURE.with(|slot| *slot.borrow_mut() = self.0.take()); }
+}
+
+/// Keeps a parse's failures with its result until the loader decides whether to publish it.
+pub fn capture_derive_failures<R>(f: impl FnOnce() -> R) -> (R, Vec<DeriveFailure>) {
+    let _restore = CaptureGuard::replace(Some(Vec::new()));
+    let result = f();
+    (result, CAPTURE.with(|slot| slot.take().expect("active derive failure capture")))
+}
+
+/// The loader has accepted this parse, even if the load ran inside another capture.
+pub fn commit_derive_failures(failures: Vec<DeriveFailure>) {
+    if failures.is_empty() { return; }
+    record_global(failures);
+}
+
 pub fn derive_failed(path: &str, item_lo: u32, line: u32, col: u32, name: &str, msg: &str) {
     if declaring() { return; }
+    let failure = DeriveFailure { path: path.into(), item_lo, line, col, name: name.into(), msg: msg.into() };
+    CAPTURE.with(|slot| {
+        if let Some(buf) = slot.borrow_mut().as_mut() {
+            buf.push(failure);
+            return;
+        }
+        record_global([failure]);
+    });
+}
+
+fn record_global(failures: impl IntoIterator<Item = DeriveFailure>) {
     let mut g = DERIVE_FAILED.lock().unwrap_or_else(|e| e.into_inner());
     let (seen, msgs) = g.get_or_insert_with(Default::default);
-    if seen.insert((path.to_string(), item_lo, name.to_string())) {
-        let text = format!("derive({}) failed: {}", name, msg);
-        msgs.push(crate::diag::record(format!("{}: {}",path,text), crate::diag::Diagnostic::new("macro",path,line,col,text)));
+    for f in failures {
+        if seen.insert((f.path.clone(), f.item_lo, f.name.clone())) {
+            let text = format!("derive({}) failed: {}", f.name, f.msg);
+            msgs.push(crate::diag::record(format!("{}: {}", f.path, text),
+                crate::diag::Diagnostic::new("macro", &f.path, f.line, f.col, text)));
+        }
     }
 }
 
@@ -306,6 +359,56 @@ pub fn clear_derive_failures(paths: &[String]) {
         seen.retain(|(p, _, _)| !paths.contains(p));
         msgs.retain(|m| !paths.iter().any(|p| m.starts_with(&format!("{}:", p))));
     }
+}
+
+#[cfg(test)]
+pub(crate) struct FailurePath(pub(crate) &'static str);
+
+#[cfg(test)]
+impl FailurePath {
+    pub(crate) fn messages(&self) -> Vec<String> {
+        let prefix = format!("{}:", self.0);
+        derive_failures().into_iter().filter(|message| message.starts_with(&prefix)).collect()
+    }
+}
+
+#[cfg(test)]
+impl Drop for FailurePath {
+    fn drop(&mut self) { clear_derive_failures(&[self.0.to_owned()]); }
+}
+
+#[test]
+fn captured_derive_failures_stay_out_of_global_table_until_committed() {
+    let path = FailurePath("derive_capture_commit.rs");
+    let name = "__Slice2CommitDerive";
+    let ((), failures) = capture_derive_failures(|| derive_failed(path.0, 10, 2, 1, name, "err"));
+    assert!(path.messages().is_empty(), "capture published the failure");
+    assert_eq!(failures, [DeriveFailure {
+        path: path.0.into(), item_lo: 10, line: 2, col: 1, name: name.into(), msg: "err".into(),
+    }]);
+    let ((), outer) = capture_derive_failures(|| commit_derive_failures(failures));
+    assert!(outer.is_empty(), "a surrounding capture intercepted the commit");
+    assert_eq!(path.messages(), [format!("{}: derive({name}) failed: err", path.0)]);
+}
+
+#[test]
+fn capture_derive_failures_restores_on_panic() {
+    let inside = FailurePath("derive_capture_unwind.rs");
+    let after = FailurePath("derive_after_unwind.rs");
+    let name = "__Slice2UnwindDerive";
+    let ((), outer) = capture_derive_failures(|| {
+        let unwound = std::panic::catch_unwind(|| capture_derive_failures(|| {
+            derive_failed(inside.0, 1, 1, 2, name, "discarded");
+            panic!("unwind a speculative parse");
+        }));
+        assert!(unwound.is_err());
+        assert!(inside.messages().is_empty(), "unwinding published the inner failure");
+        derive_failed(inside.0, 2, 1, 3, name, "outer");
+    });
+    assert_eq!(outer.len(), 1, "unwinding did not restore the outer capture");
+    assert_eq!(outer[0].msg, "outer");
+    derive_failed(after.0, 0, 1, 1, name, "after");
+    assert_eq!(after.messages(), [format!("{}: derive({name}) failed: after", after.0)]);
 }
 
 /// Adds to the host's stats (render/parse time is measured by builtins and the parser).
@@ -568,6 +671,7 @@ pub fn run_bang_in(sess: &std::sync::Arc<crate::Session>, krate: &str, i: usize,
     }
     let _krate = with_call_krate(krate);
     let _outside = crate::parse_work::outside();
+    let _capture = CaptureGuard::replace(None);
     match RUNNER.get() {
         Some(r) if declaring() => r.declare(sess, &e, None, &input, call_span),
         Some(r) => r.call(sess, &e, &input, call_span),
@@ -1065,6 +1169,7 @@ pub fn run_attr(sess: &std::sync::Arc<crate::Session>, krate: &str, e: &Entry, a
     }
     let _krate = with_call_krate(krate);
     let _outside = crate::parse_work::outside();
+    let _capture = CaptureGuard::replace(None);
     match RUNNER.get() {
         Some(r) if declaring() => r.declare(sess, e, Some(attr), item, call_span),
         Some(r) => r.call_attr(sess, e, attr, item, call_span),
@@ -1394,6 +1499,7 @@ pub(crate) fn run_derive_entry(sess: &std::sync::Arc<crate::Session>, krate: &st
     let _profile = crate::load_profile::span(sess.runtime.profile, if native { "derive-native" } else { "derive-jit" }, name);
     let _krate = with_call_krate(krate);
     let _outside = crate::parse_work::outside();
+    let _capture = CaptureGuard::replace(None);
     match RUNNER.get() {
         Some(r) if declaring() => r.declare(sess, e, None, item, call_span),
         Some(r) => r.call(sess, e, item, call_span),

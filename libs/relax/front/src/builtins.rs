@@ -2078,6 +2078,19 @@ impl Drop for PreDerivesGuard {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn seed_pre_derive_failure(path: &str, test_cfg: bool, item_lo: u32, item_hi: u32, name: &str, msg: &str) -> PreDerivesGuard {
+    let failure = PreFailure { line: 1, col: 1, name: name.into(), msg: msg.into() };
+    PRE.with(|m| m.borrow_mut().insert((path.into(), test_cfg, item_lo, item_hi),
+        PreEntry { result: Ok(None), failures: vec![failure] }));
+    PreDerivesGuard { paths: vec![path.into()], test_cfg }
+}
+
+#[cfg(test)]
+pub(crate) fn has_pre_derive_entries(path: &str) -> bool {
+    PRE.with(|m| m.borrow().keys().any(|(p, _, _, _)| p == path))
+}
+
 /// For an item `toks[lo..hi]` (outer attributes included) whose attributes name a derive Relax
 /// runs: the derives' expansion as tokens. `Ok(None)`: nothing to expand.
 pub fn derive_items(p: &crate::parser::Parser, attrs: &[crate::ast::Attr], lo: usize, hi: usize) -> Result<Option<Expansion>, (u32, String)> {

@@ -124,6 +124,8 @@ pub(crate) fn publish_macros(table: &mut MacroTable, name: &str, defs: &[MacroRe
 }
 
 pub struct Preparsed {
+    /// Failures from this parse, published when the loader accepts the file.
+    pub derive_failures: Vec<crate::macro_reg::DeriveFailure>,
     /// A lowered file parsed in the loader's scope failed; retrying cannot change it.
     pub error: Option<String>,
     pub verify: Option<fn(&ParsedFile, &ParsedFile)>,
@@ -808,7 +810,9 @@ fn parse_job(_sess: &std::sync::Arc<crate::Session>, job: Job, in_scope: bool, s
     // RELAX_BOOT_TRACE with RELAX_MEM_REPORT: the bytes this job retains on its thread and its peak
     let (live0, peak) = (crate::memstat::thread_live(), crate::memstat::peak_start());
     let bctx = std::rc::Rc::new(crate::builtins::FileCtx::new(&ctx.name, &path, &mod_path, &ctx.cfg));
-    let r = ctx.context.parse_input(src, Some(toks), ctx.edition, Some(crate::macros::MacroScope::new(ctx.table.clone())), bctx, crate::parser::lazy_auto());
+    let (r, derive_failures) = crate::macro_reg::capture_derive_failures(|| {
+        ctx.context.parse_input(src, Some(toks), ctx.edition, Some(crate::macros::MacroScope::new(ctx.table.clone())), bctx, crate::parser::lazy_auto())
+    });
     PARSE_NS.fetch_add(t.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
     if trace() && crate::memstat::enabled() {
         let pk = crate::memstat::peak_end(peak);
@@ -838,7 +842,7 @@ fn parse_job(_sess: &std::sync::Arc<crate::Session>, job: Job, in_scope: bool, s
         }
     }
     let verify = ctx.cfg.session.runtime.parse_verify.then(|| VERIFY.get().copied()).flatten();
-    ((krate, path), Preparsed { parsed, prep, mod_path, src_len, verify, error, image_bytes })
+    ((krate, path), Preparsed { parsed, prep, mod_path, src_len, verify, error, image_bytes, derive_failures })
 }
 
 /// RELAX_BOOT_TRACE=1: boot-path timing and why files were parsed again (stderr `boot-trace`).
@@ -1880,6 +1884,32 @@ pub fn check_macros(prog: &mut crate::program::Program, krate: u32, files: &[(u3
 #[cfg(test)]
 mod cold_tests {
     use super::*;
+
+    #[test]
+    fn parse_job_captures_derive_failures_without_touching_global_table() {
+        let path = crate::macro_reg::FailurePath("derive_parse_job.rs");
+        let name = "__Slice2ParseJobDerive";
+        let src = b"#[derive(__Slice2ParseJobDerive)] pub struct S { x: u32 }";
+        let sess = Arc::new(crate::Session::default());
+        let cfg = CfgSet::host(&sess, &[]);
+        let _guard = crate::builtins::seed_pre_derive_failure(path.0, cfg.holds("test"), 0, src.len() as u32, name, "worker");
+        let mut toks = Vec::new();
+        crate::lexer::lex(src, 2021, &mut toks).map_err(|e| e.msg).unwrap();
+        let ctx = Arc::new(CrateCtx {
+            context: crate::source_context::Context::new(path.0, Default::default(), &sess),
+            name: "test".into(), edition: 2021, cfg, table: Arc::default(), world: (false, false),
+        });
+        let job = Job { krate: 0, path: path.0.into(), mod_path: "test".into(), src: src.to_vec(), toks, ctx };
+        let (_, preparsed) = parse_job(&sess, job, false, None);
+        assert!(preparsed.parsed.is_some(), "worker discarded the fixture's parse");
+        assert!(!crate::builtins::has_pre_derive_entries(path.0), "worker missed the seeded entry");
+        assert!(path.messages().is_empty(), "speculative worker published a failure");
+        assert_eq!(preparsed.derive_failures, [crate::macro_reg::DeriveFailure {
+            path: path.0.into(), item_lo: 0, line: 1, col: 1, name: name.into(), msg: "worker".into(),
+        }]);
+        drop(preparsed);
+        assert!(path.messages().is_empty(), "discarding the worker result published its failure");
+    }
 
     /// A file-level inline module's `#[path]` is relative to its file: in a non-mod.rs file the
     /// scan finds the module's children there, and their imports (relax PR 182).

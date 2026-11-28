@@ -8425,6 +8425,7 @@ impl FrontImages {
                 files.push((
                     path,
                     crate::preload::Preparsed {
+                        derive_failures: Vec::new(),
                         error: None,
                         parsed: Some((pf, f.used)),
                         prep: Some(f.prep),
@@ -8527,6 +8528,7 @@ impl FrontImages {
             // (a store an image is taken from is in use: prune keeps it)
             st.mark_used();
             Some(crate::preload::Preparsed {
+                derive_failures: Vec::new(),
                 error: None,
                 parsed: Some((pf, used)),
                 prep: Some(f.prep),
