@@ -675,6 +675,11 @@ pub fn session_from_env(args: &[String]) -> Result<std::sync::Arc<crate::Session
         drop_ambient_grants();
     }
     let mut options = crate::options::Options::try_from_env()?;
+    if let Some(width) = options.check_target.web().filter(|_| !crate::web::RUNTIME) {
+        let triple = crate::options::CheckTarget::web_triple(width);
+        let arch = triple.split('-').next().unwrap_or(triple);
+        return Err(format!("{arch} checks need the web runtime, which runs on macOS and Linux only (RELAX_CHECK_TARGET={triple})"));
+    }
     let mut runtime = crate::options::RuntimeOptions::from_env();
     // `--no-asm` and the grants (`--allow-*`) anywhere before `--`, for every command (run, test,
     // check, the relax runner); cli_main drops them from the arguments. `--no-asm` reaches the
@@ -714,6 +719,19 @@ fn session_from_env_and_rustc_answer_refuse_unknown_check_target() {
     assert_eq!(code, 2);
     assert!(out.is_empty(), "rustc printed cfg for an unknown target");
     assert_eq!(String::from_utf8(err).unwrap(), format!("{}: {error}\n", crate::tool_name()));
+
+    std::env::set_var("RELAX_CHECK_TARGET", "wasm32-unknown-unknown");
+    let error = session_from_env(&["makepad".into(), "check".into(), "p".into()]).err();
+    let refusal = "wasm32 checks need the web runtime, which runs on macOS and Linux only";
+    if crate::web::RUNTIME {
+        if let Some(error) = error {
+            assert!(!error.contains(refusal), "{error}");
+            eprintln!("{error}");
+        }
+    } else {
+        let error = error.expect("wasm32 check accepted without the web runtime");
+        assert!(error.contains(refusal), "{error}");
+    }
 }
 
 /// A `makepad run` host (Sandboxed) takes the grants from its words before `--` alone: their
